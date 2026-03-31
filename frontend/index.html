@@ -234,6 +234,19 @@
             <button class="btn-add interactive-scale" onclick="addTodoHandler()" title="追加">+</button>
           </div>
 
+          <div class="search-bar">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input
+              type="search"
+              id="search-input"
+              class="search-input"
+              placeholder="TODOを検索..."
+              autocomplete="off"
+              oninput="setSearch(this.value)"
+            />
+            <button id="search-clear" class="search-clear" onclick="setSearch('')" title="検索をクリア" aria-label="検索をクリア" style="display:none">✕</button>
+          </div>
+
           <div class="todo-toolbar">
             <div class="todo-filters">
               <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">すべて</button>
