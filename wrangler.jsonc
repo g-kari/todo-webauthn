@@ -23,7 +23,7 @@
     "RP_ID": "todo.0g0.xyz",
     "RP_ORIGIN": "https://todo.0g0.xyz",
     // Turso DB URL（wrangler secret put TURSO_AUTH_TOKEN も設定すること）
-    "TURSO_DATABASE_URL": "libsql://your-db.turso.io"
+    "TURSO_DATABASE_URL": "libsql://todo-g-kari.aws-ap-northeast-1.turso.io"
   },
   // ローカル開発用オーバーライド
   "env": {
@@ -32,7 +32,7 @@
         "RP_NAME": "WebAuthn TODO (dev)",
         "RP_ID": "localhost",
         "RP_ORIGIN": "http://localhost:8787",
-        "TURSO_DATABASE_URL": "libsql://your-db.turso.io"
+        "TURSO_DATABASE_URL": "libsql://todo-g-kari.aws-ap-northeast-1.turso.io"
       }
     }
   }
