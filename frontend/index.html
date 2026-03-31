@@ -240,8 +240,17 @@
               <button class="filter-btn" id="filter-active" onclick="setFilter('active')">未完了</button>
               <button class="filter-btn" id="filter-completed" onclick="setFilter('completed')">完了済み</button>
             </div>
-            <div id="todo-count" class="todo-count"></div>
+            <div class="todo-toolbar-right">
+              <span id="todo-count" class="todo-count"></span>
+              <div class="view-toggle" role="group" aria-label="表示モード">
+                <button class="view-btn active" id="view-list" onclick="setView('list')" title="リスト表示">☰</button>
+                <button class="view-btn" id="view-kanban" onclick="setView('kanban')" title="カンバン表示">⬛</button>
+              </div>
+              <button class="settings-btn interactive-scale-sm" id="settings-btn" onclick="toggleSettingsPanel()" title="設定" aria-label="設定">⚙</button>
+            </div>
           </div>
+
+          <div id="settings-panel" class="settings-panel" style="display:none"></div>
 
           <div id="todo-list" class="todo-list">
             <div class="loading"><span class="spinner"></span>読み込み中...</div>
