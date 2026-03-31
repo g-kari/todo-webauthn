@@ -664,7 +664,10 @@ function saveSettings(): void {
 function applySettings(): void {
   const root = document.documentElement;
   root.style.setProperty('--color-accent', settings.accentColor);
-  root.style.setProperty('--font-size-base', FONT_SIZE_MAP[settings.fontSize]);
+  // html 要素の font-size を変更することで rem 単位すべてに反映される
+  const fontSize = FONT_SIZE_MAP[settings.fontSize];
+  root.style.setProperty('--font-size-base', fontSize);
+  root.style.fontSize = fontSize;
   // ビュー切り替えボタンの状態更新
   document.getElementById('view-list')?.classList.toggle('active', currentView === 'list');
   document.getElementById('view-kanban')?.classList.toggle('active', currentView === 'kanban');
@@ -866,7 +869,7 @@ function getEffectiveStatus(todo: DecryptedTodo): KanbanStatus {
 }
 
 function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
-  container.className = 'kanban-board';
+  container.className = 'todo-list kanban-board';
 
   const columns = KANBAN_ORDER.map((status) => {
     const col = document.createElement('div');
@@ -1169,9 +1172,15 @@ async function saveNotes(id: string, notesJson: string): Promise<void> {
 // ========================
 
 function setupDragAndDrop(listEl: HTMLElement): void {
+  // mousedown で drag-handle からの操作かを記録する
+  // （dragstart の e.target は draggable 要素自体になるため直接チェック不可）
+  let dragFromHandle = false;
+  listEl.addEventListener('mousedown', (e) => {
+    dragFromHandle = !!(e.target as HTMLElement).closest('.drag-handle');
+  });
+
   listEl.addEventListener('dragstart', (e) => {
-    const handle = (e.target as HTMLElement).closest('.drag-handle');
-    if (!handle) { e.preventDefault(); return; }
+    if (!dragFromHandle) { e.preventDefault(); return; }
     const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
     if (!wrapper) return;
     draggedId = wrapper.dataset.id ?? null;
@@ -1308,6 +1317,9 @@ function renderTodos(todos: DecryptedTodo[]): void {
     renderKanban(todos, listEl);
     return;
   }
+
+  // リストビューに戻す際にクラスを復元
+  listEl.className = 'todo-list';
 
   const filtered = applyFilter(todos);
 
