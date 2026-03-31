@@ -3,93 +3,289 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebAuthn TODO</title>
+    <title>WebAuthn TODO — パスキーで守られた暗号化TODO</title>
+    <meta name="description" content="パスキー（指紋・顔認証）で認証し、AES-GCM-256でクライアントサイド暗号化するゼロナレッジTODOアプリ。サーバーはTODOの内容を一切読めません。" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Reddit+Sans:ital,wdth,wght@0,75..100,200..900;1,75..100,200..900&family=IBM+Plex+Sans+JP:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <div class="app">
-      <header>
-        <div class="logo">
+    <!-- ===== サイトヘッダー ===== -->
+    <header id="site-header">
+      <div class="header-inner">
+        <a href="/" class="logo">
           <span class="logo-icon">🔐</span>
-          <span>WebAuthn TODO</span>
-        </div>
-        <div class="header-actions">
-          <div id="lock-status" class="lock-status locked" style="display:none">
+          <span class="logo-text">WebAuthn TODO</span>
+        </a>
+        <nav class="header-nav">
+          <a
+            href="https://github.com/g-kari/todo-webauthn"
+            class="btn-ghost btn-sm header-github"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+            </svg>
+            GitHub
+          </a>
+          <div id="lock-status" class="lock-status" style="display:none">
             <span id="lock-icon">🔒</span>
-            <span id="lock-label">ロック中</span>
+            <span id="lock-label"></span>
           </div>
-          <button id="logout-btn" class="btn-ghost" style="display:none">ログアウト</button>
-        </div>
-      </header>
+          <button id="logout-btn" class="btn-ghost btn-sm" style="display:none">ログアウト</button>
+        </nav>
+      </div>
+    </header>
 
-      <!-- 認証セクション -->
-      <div id="auth-section">
-        <div class="auth-title">
-          <h2>パスキーでサインイン</h2>
-          <p>指紋・顔認証・1Password などで認証して、暗号化されたTODOにアクセス</p>
-        </div>
-        <div class="card">
-          <div class="auth-tabs">
-            <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">ログイン</button>
-            <button class="tab-btn" id="tab-register" onclick="switchTab('register')">新規登録</button>
-          </div>
-
-          <!-- ログインフォーム -->
-          <div id="login-form">
-            <div class="form-group">
-              <label for="login-username">ユーザー名</label>
-              <input type="text" id="login-username" placeholder="ユーザー名を入力" autocomplete="username webauthn" />
+    <main>
+      <!-- ===== LP セクション ===== -->
+      <section id="lp-section">
+        <!-- ヒーロー -->
+        <div class="lp-hero">
+          <div class="lp-hero-content">
+            <div class="lp-badge">🔒 ゼロナレッジ暗号化</div>
+            <h1 class="lp-title">パスキーで守られた<br />あなただけのTODO</h1>
+            <p class="lp-desc">
+              指紋・顔認証でサインイン。TODOはあなたのデバイスで暗号化され、<br class="br-pc" />サーバーは内容を一切読めません。
+            </p>
+            <div class="lp-actions">
+              <button class="btn-primary btn-lg interactive-scale" onclick="showAuthFromLP()">始める</button>
+              <a href="#how-it-works" class="btn-ghost btn-lg interactive-scale">仕組みを見る</a>
             </div>
-            <button class="btn-primary" id="login-btn" onclick="loginHandler()">
-              パスキーでログイン
+          </div>
+        </div>
+
+        <!-- 特徴セクション -->
+        <div class="lp-features" id="how-it-works">
+          <div class="lp-container">
+            <h2 class="section-title">なぜ安全なのか</h2>
+            <div class="features-grid">
+              <div class="feature-card interactive-scale-sm">
+                <div class="feature-icon">🗝️</div>
+                <h3>パスキー認証</h3>
+                <p>パスワード不要。指紋・顔・デバイスPINで安全にサインイン。フィッシング耐性があり、パスワード漏洩リスクがありません。</p>
+              </div>
+              <div class="feature-card interactive-scale-sm">
+                <div class="feature-icon">🔐</div>
+                <h3>AES-GCM-256暗号化</h3>
+                <p>TODOの内容はあなたのデバイス上でAES-GCM-256で暗号化。サーバーには暗号文のみが保存されます。</p>
+              </div>
+              <div class="feature-card interactive-scale-sm">
+                <div class="feature-icon">🚫</div>
+                <h3>ゼロナレッジ設計</h3>
+                <p>サーバーは暗号化データしか持ちません。管理者・開発者であってもTODOの内容を読むことはできません。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 暗号化フロー -->
+        <div class="lp-flow">
+          <div class="lp-container">
+            <h2 class="section-title">暗号化の仕組み</h2>
+            <div class="flow-steps">
+              <div class="flow-step">
+                <div class="flow-num">1</div>
+                <h4>パスキー認証</h4>
+                <p>WebAuthn PRF拡張でデバイス固有の秘密値を取得</p>
+              </div>
+              <div class="flow-arrow" aria-hidden="true">→</div>
+              <div class="flow-step">
+                <div class="flow-num">2</div>
+                <h4>鍵導出 (HKDF)</h4>
+                <p>PRF出力からHKDFでAES-GCM-256鍵を生成（メモリのみ）</p>
+              </div>
+              <div class="flow-arrow" aria-hidden="true">→</div>
+              <div class="flow-step">
+                <div class="flow-num">3</div>
+                <h4>クライアント暗号化</h4>
+                <p>TODOをデバイス上で暗号化してからサーバーへ送信</p>
+              </div>
+            </div>
+            <p class="flow-note">
+              💡 暗号鍵はメモリ上にのみ存在し、ページを閉じると消えます。再ログイン時にパスキー認証で再生成されます。
+            </p>
+          </div>
+        </div>
+
+        <!-- 対応認証器 -->
+        <div class="lp-compat">
+          <div class="lp-container">
+            <h2 class="section-title">PRF拡張の対応状況</h2>
+            <p class="compat-note">このアプリはPRF拡張に対応した認証器が必要です</p>
+            <div class="compat-grid">
+              <div class="compat-item ok"><span>✅</span><span>1Password</span></div>
+              <div class="compat-item ok"><span>✅</span><span>iCloud Keychain (iOS 18+)</span></div>
+              <div class="compat-item ok"><span>✅</span><span>Google Password Manager</span></div>
+              <div class="compat-item ok"><span>✅</span><span>YubiKey (FW 5.7+)</span></div>
+              <div class="compat-item partial"><span>⚠️</span><span>Windows Hello (一部)</span></div>
+              <div class="compat-item ng"><span>❌</span><span>旧FIDO2デバイス</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="lp-cta">
+          <div class="lp-container lp-cta-inner">
+            <h2>今すぐ始める</h2>
+            <p>無料・登録不要（パスキーのみ）</p>
+            <button class="btn-primary btn-lg interactive-scale" onclick="showAuthFromLP()">
+              パスキーで始める
             </button>
-            <div id="login-message" class="message"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 認証セクション ===== -->
+      <section id="auth-section" style="display:none">
+        <div class="auth-outer">
+          <button class="btn-ghost btn-sm btn-back interactive-scale" onclick="showLP()">← 戻る</button>
+          <div class="auth-title">
+            <h2>パスキーでサインイン</h2>
+            <p>指紋・顔認証・1Passwordなどで認証して、<br />暗号化されたTODOにアクセス</p>
+          </div>
+          <div class="card">
+            <div class="auth-tabs">
+              <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">ログイン</button>
+              <button class="tab-btn" id="tab-register" onclick="switchTab('register')">新規登録</button>
+            </div>
+
+            <!-- ログインフォーム -->
+            <div id="login-form">
+              <div class="form-group">
+                <label for="login-username">ユーザー名</label>
+                <input type="text" id="login-username" placeholder="ユーザー名を入力" autocomplete="username webauthn" />
+              </div>
+              <button class="btn-primary btn-full interactive-scale-sm" id="login-btn" onclick="loginHandler()">
+                パスキーでログイン
+              </button>
+              <div id="login-message" class="message"></div>
+            </div>
+
+            <!-- 登録フォーム -->
+            <div id="register-form" style="display:none">
+              <div class="form-group">
+                <label for="reg-username">ユーザー名</label>
+                <input type="text" id="reg-username" placeholder="ユーザー名を入力" autocomplete="username" />
+              </div>
+              <button class="btn-primary btn-full interactive-scale-sm" id="register-btn" onclick="registerHandler()">
+                パスキーを登録
+              </button>
+              <div id="register-message" class="message"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== アンロックセクション ===== -->
+      <section id="unlock-section" style="display:none">
+        <div class="unlock-container">
+          <div class="unlock-icon">🔒</div>
+          <h2>TODOをアンロック</h2>
+          <p>セッションは有効ですが、暗号化鍵がありません。<br />パスキーで認証してTODOを復号してください。</p>
+          <button class="btn-primary interactive-scale-sm" onclick="unlockHandler()">パスキーでアンロック</button>
+          <div id="unlock-message" class="message"></div>
+        </div>
+      </section>
+
+      <!-- ===== TODOセクション ===== -->
+      <section id="todo-section" style="display:none">
+        <div class="todo-container">
+          <div class="add-todo-form">
+            <input
+              type="text"
+              id="new-todo-input"
+              placeholder="新しいTODOを追加... (Enterで確定)"
+              onkeydown="if(event.key==='Enter') addTodoHandler()"
+            />
+            <button class="btn-add interactive-scale" onclick="addTodoHandler()" title="追加">+</button>
           </div>
 
-          <!-- 登録フォーム -->
-          <div id="register-form" style="display:none">
-            <div class="form-group">
-              <label for="reg-username">ユーザー名</label>
-              <input type="text" id="reg-username" placeholder="ユーザー名を入力" autocomplete="username" />
+          <div class="todo-toolbar">
+            <div class="todo-filters">
+              <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">すべて</button>
+              <button class="filter-btn" id="filter-active" onclick="setFilter('active')">未完了</button>
+              <button class="filter-btn" id="filter-completed" onclick="setFilter('completed')">完了済み</button>
             </div>
-            <button class="btn-primary" id="register-btn" onclick="registerHandler()">
-              パスキーを登録
-            </button>
-            <div id="register-message" class="message"></div>
+            <div id="todo-count" class="todo-count"></div>
           </div>
+
+          <div id="todo-list" class="todo-list">
+            <div class="loading"><span class="spinner"></span>読み込み中...</div>
+          </div>
+
+          <div id="clear-completed-wrap" class="clear-completed-wrap" style="display:none">
+            <button class="btn-ghost btn-sm interactive-scale-sm" onclick="clearCompletedHandler()">完了済みを削除</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===== フッター ===== -->
+    <footer id="site-footer">
+      <div class="footer-inner">
+        <span class="footer-logo">🔐 WebAuthn TODO</span>
+        <div class="footer-links">
+          <button class="footer-link-btn" onclick="showPrivacyPolicy(event)">プライバシーポリシー</button>
+          <a
+            href="https://github.com/g-kari/todo-webauthn"
+            class="footer-link-btn"
+            target="_blank"
+            rel="noopener noreferrer"
+          >GitHub</a>
         </div>
       </div>
+    </footer>
 
-      <!-- アンロックセクション（セッションあり・鍵なし） -->
-      <div id="unlock-section">
-        <div class="unlock-icon">🔒</div>
-        <h2 style="margin-bottom:8px">TODOをアンロック</h2>
-        <p class="unlock-desc">
-          セッションは有効ですが、暗号化鍵がありません。<br />
-          パスキーで認証してTODOを復号してください。
-        </p>
-        <button class="btn-primary" style="max-width:280px;margin:0 auto" onclick="unlockHandler()">
-          パスキーでアンロック
-        </button>
-        <div id="unlock-message" class="message" style="max-width:280px;margin:12px auto 0"></div>
-      </div>
+    <!-- ===== プライバシーポリシーモーダル ===== -->
+    <div id="privacy-modal" class="modal-overlay" style="display:none" onclick="hidePrivacyPolicy(event)">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+        <button class="modal-close interactive-scale" onclick="hidePrivacyPolicy()" aria-label="閉じる">×</button>
+        <h2 id="privacy-title">プライバシーポリシー</h2>
+        <div class="privacy-content">
+          <p class="privacy-updated">最終更新: 2025年4月</p>
 
-      <!-- TODOセクション -->
-      <div id="todo-section">
-        <div class="add-todo-form">
-          <input
-            type="text"
-            id="new-todo-input"
-            placeholder="新しいTODOを入力..."
-            onkeydown="if(event.key==='Enter') addTodoHandler()"
-          />
-          <button onclick="addTodoHandler()">+</button>
-        </div>
+          <h3>収集するデータ</h3>
+          <ul>
+            <li><strong>ユーザー名</strong> — 認証識別子として保存（平文）</li>
+            <li><strong>WebAuthnクレデンシャル</strong> — パスキーの公開鍵情報（秘密鍵はデバイス上のみ）</li>
+            <li><strong>暗号化TODOデータ</strong> — AES-GCM-256で暗号化された内容のみ。サーバーは復号不可</li>
+          </ul>
 
-        <div id="todo-count" class="todo-count"></div>
+          <h3>収集しないデータ</h3>
+          <ul>
+            <li>TODOの平文コンテンツ（サーバーは暗号文しか持ちません）</li>
+            <li>IPアドレス・ユーザー行動ログ・アクセス解析</li>
+            <li>第三者トラッキング・広告</li>
+          </ul>
 
-        <div id="todo-list" class="todo-list">
-          <div class="loading"><span class="spinner"></span>読み込み中...</div>
+          <h3>暗号化について</h3>
+          <p>
+            暗号化鍵はWebAuthn PRF拡張から導出され、あなたのデバイスのメモリ上にのみ存在します。
+            サーバーに送信されることはありません。ページを閉じると鍵は消失し、
+            次回アクセス時にパスキー認証で再生成されます。
+          </p>
+
+          <h3>データの削除</h3>
+          <p>
+            アカウントの削除を希望する場合は、
+            <a href="https://github.com/g-kari/todo-webauthn/issues" target="_blank" rel="noopener">GitHub Issues</a>
+            よりお問い合わせください。サーバー上のデータ（暗号化済みTODO・クレデンシャル）をすべて削除します。
+          </p>
+
+          <h3>第三者への提供</h3>
+          <p>収集したデータを第三者に提供・販売することはありません。</p>
+
+          <h3>お問い合わせ</h3>
+          <p>
+            <a href="https://github.com/g-kari/todo-webauthn/issues" target="_blank" rel="noopener">GitHub Issues</a>
+            よりご連絡ください。
+          </p>
         </div>
       </div>
     </div>

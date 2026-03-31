@@ -31,6 +31,8 @@ interface TodoData {
 
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
 
+type Filter = 'all' | 'active' | 'completed';
+
 // ========================
 // 状態管理
 // ========================
@@ -38,6 +40,8 @@ interface DecryptedTodo extends EncryptedTodo, TodoData {}
 /** PRF由来の暗号鍵（メモリのみ・ページ離脱で消失） */
 let encryptionKey: CryptoKey | null = null;
 let todosCache: EncryptedTodo[] = [];
+let decryptedCache: DecryptedTodo[] = [];
+let currentFilter: Filter = 'all';
 
 // ========================
 // 起動処理
@@ -55,10 +59,10 @@ async function init(): Promise<void> {
       const user = await res.json() as { id: string; username: string };
       showUnlockSection(user.username);
     } else {
-      showAuthSection();
+      showLP();
     }
   } catch {
-    showAuthSection();
+    showLP();
   }
 }
 
@@ -66,18 +70,30 @@ async function init(): Promise<void> {
 // 画面切り替え
 // ========================
 
-function showAuthSection(): void {
-  document.getElementById('auth-section')!.style.display = '';
-  document.getElementById('unlock-section')!.classList.remove('visible');
-  document.getElementById('todo-section')!.classList.remove('visible');
+function hideAll(): void {
+  document.getElementById('lp-section')!.style.display = 'none';
+  document.getElementById('auth-section')!.style.display = 'none';
+  document.getElementById('unlock-section')!.style.display = 'none';
+  document.getElementById('todo-section')!.style.display = 'none';
   document.getElementById('lock-status')!.style.display = 'none';
   document.getElementById('logout-btn')!.style.display = 'none';
+  document.getElementById('site-footer')!.style.display = '';
+}
+
+function showLP(): void {
+  hideAll();
+  document.getElementById('lp-section')!.style.display = '';
+}
+
+function showAuthCard(): void {
+  hideAll();
+  document.getElementById('auth-section')!.style.display = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function showUnlockSection(username: string): void {
-  document.getElementById('auth-section')!.style.display = 'none';
-  document.getElementById('unlock-section')!.classList.add('visible');
-  document.getElementById('todo-section')!.classList.remove('visible');
+  hideAll();
+  document.getElementById('unlock-section')!.style.display = '';
   document.getElementById('lock-status')!.style.display = '';
   document.getElementById('lock-status')!.className = 'lock-status locked';
   document.getElementById('lock-icon')!.textContent = '🔒';
@@ -86,9 +102,8 @@ function showUnlockSection(username: string): void {
 }
 
 function showTodoSection(username: string): void {
-  document.getElementById('auth-section')!.style.display = 'none';
-  document.getElementById('unlock-section')!.classList.remove('visible');
-  document.getElementById('todo-section')!.classList.add('visible');
+  hideAll();
+  document.getElementById('todo-section')!.style.display = '';
   document.getElementById('lock-status')!.style.display = '';
   document.getElementById('lock-status')!.className = 'lock-status unlocked';
   document.getElementById('lock-icon')!.textContent = '🔓';
@@ -221,7 +236,7 @@ async function doUnlock(): Promise<void> {
 
   try {
     const meRes = await fetch('/api/auth/me');
-    if (!meRes.ok) { showAuthSection(); return; }
+    if (!meRes.ok) { showLP(); return; }
     const user = await meRes.json() as { username: string };
     await performAuthentication(user.username, 'unlock-message');
   } catch (err: unknown) {
@@ -308,7 +323,9 @@ document.getElementById('logout-btn')!.addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST' });
   encryptionKey = null;
   todosCache = [];
-  showAuthSection();
+  decryptedCache = [];
+  currentFilter = 'all';
+  showLP();
 });
 
 // ========================
@@ -364,36 +381,55 @@ async function loadTodos(): Promise<void> {
     const encrypted = await res.json() as EncryptedTodo[];
     todosCache = encrypted;
 
-    const decrypted: DecryptedTodo[] = await Promise.all(
+    decryptedCache = await Promise.all(
       encrypted.map(async (todo) => {
         const data = await decryptTodo(todo.encrypted_data, todo.iv);
         return { ...todo, ...data };
       })
     );
 
-    renderTodos(decrypted);
+    renderTodos(decryptedCache);
   } catch (err: unknown) {
-    listEl.innerHTML = `<div class="message error show">${(err as Error).message}</div>`;
+    listEl.innerHTML = `<div class="message error show">${escapeHtml((err as Error).message)}</div>`;
   }
+}
+
+function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
+  if (currentFilter === 'active') return todos.filter((t) => !t.completed);
+  if (currentFilter === 'completed') return todos.filter((t) => t.completed);
+  return todos;
 }
 
 function renderTodos(todos: DecryptedTodo[]): void {
   const listEl = document.getElementById('todo-list')!;
   const countEl = document.getElementById('todo-count')!;
+  const clearWrap = document.getElementById('clear-completed-wrap')!;
 
+  const total = todos.length;
   const done = todos.filter((t) => t.completed).length;
-  countEl.textContent = todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
+  const hasCompleted = done > 0;
 
-  if (todos.length === 0) {
+  countEl.textContent = total === 0 ? '' : `${done} / ${total} 完了`;
+  clearWrap.style.display = hasCompleted ? '' : 'none';
+
+  const filtered = applyFilter(todos);
+
+  if (filtered.length === 0) {
+    const emptyMsg = currentFilter === 'active'
+      ? '未完了のTODOはありませんわ！'
+      : currentFilter === 'completed'
+      ? '完了済みのTODOはありませんわ'
+      : 'TODOがありませんわ。追加してみてくださいませ！';
+
     listEl.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">📝</div>
-        <p>TODOがありませんわ。追加してみてくださいませ！</p>
+        <p>${emptyMsg}</p>
       </div>`;
     return;
   }
 
-  listEl.innerHTML = todos
+  listEl.innerHTML = filtered
     .map(
       (todo) => `
     <div class="todo-item ${todo.completed ? 'completed' : ''}" data-id="${todo.id}">
@@ -401,7 +437,10 @@ function renderTodos(todos: DecryptedTodo[]): void {
         onclick="window.__toggleTodo('${todo.id}', ${!todo.completed})"
         title="${todo.completed ? '未完了に戻す' : '完了にする'}"
       >${todo.completed ? '✓' : ''}</button>
-      <span class="todo-title">${escapeHtml(todo.title)}</span>
+      <span class="todo-title"
+        ondblclick="window.__editTodo('${todo.id}', '${escapeAttr(todo.title)}')"
+        title="ダブルクリックで編集"
+      >${escapeHtml(todo.title)}</span>
       <button class="btn-danger" onclick="window.__deleteTodo('${todo.id}')" title="削除">×</button>
     </div>`
     )
@@ -458,6 +497,130 @@ async function deleteTodo(id: string): Promise<void> {
 }
 
 // ========================
+// インライン編集
+// ========================
+
+function startEditTodo(id: string, currentTitle: string): void {
+  const item = document.querySelector<HTMLElement>(`.todo-item[data-id="${id}"]`);
+  if (!item) return;
+
+  const titleEl = item.querySelector<HTMLElement>('.todo-title');
+  if (!titleEl) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentTitle;
+  input.className = 'todo-edit-input';
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let cancelled = false;
+
+  const save = async (): Promise<void> => {
+    if (cancelled) return;
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== currentTitle) {
+      try {
+        await updateTodoTitle(id, newTitle);
+      } catch (err: unknown) {
+        alert((err as Error).message);
+        await loadTodos();
+      }
+    } else {
+      await loadTodos();
+    }
+  };
+
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      cancelled = true;
+      await loadTodos();
+    }
+  });
+
+  input.addEventListener('blur', save);
+}
+
+async function updateTodoTitle(id: string, newTitle: string): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  const data = await decryptTodo(todo.encrypted_data, todo.iv);
+  const { encrypted_data, iv } = await encryptTodo({ ...data, title: newTitle });
+  const res = await fetch(`/api/todos/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ encrypted_data, iv }),
+  });
+  if (!res.ok) throw new Error('更新に失敗しましたわ');
+  await loadTodos();
+}
+
+// ========================
+// フィルター
+// ========================
+
+function setFilter(filter: Filter): void {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach((btn) => btn.classList.remove('active'));
+  document.getElementById(`filter-${filter}`)?.classList.add('active');
+  renderTodos(decryptedCache);
+}
+
+// ========================
+// 完了済み一括削除
+// ========================
+
+async function clearCompleted(): Promise<void> {
+  const completedIds = decryptedCache.filter((t) => t.completed).map((t) => t.id);
+  if (completedIds.length === 0) return;
+  if (!confirm(`完了済み ${completedIds.length} 件を削除しますわよ？`)) return;
+
+  try {
+    await Promise.all(
+      completedIds.map((id) =>
+        fetch(`/api/todos/${id}`, { method: 'DELETE' })
+      )
+    );
+    await loadTodos();
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
+}
+
+// ========================
+// プライバシーポリシー
+// ========================
+
+function showPrivacyPolicy(e?: Event): void {
+  e?.preventDefault();
+  const modal = document.getElementById('privacy-modal')!;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function hidePrivacyPolicy(e?: Event): void {
+  if (e && e.target !== document.getElementById('privacy-modal')) return;
+  const modal = document.getElementById('privacy-modal')!;
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Escキーでモーダルを閉じる
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('privacy-modal')!;
+    if (modal.style.display !== 'none') {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+});
+
+// ========================
 // UIユーティリティ
 // ========================
 
@@ -481,6 +644,11 @@ function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** onclick属性値用エスケープ（シングルクォート・バックスラッシュ） */
+function escapeAttr(str: string): string {
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 // ========================
@@ -515,11 +683,18 @@ declare global {
   interface Window {
     __toggleTodo: (id: string, completed: boolean) => void;
     __deleteTodo: (id: string) => void;
+    __editTodo: (id: string, currentTitle: string) => void;
     switchTab: (tab: 'login' | 'register') => void;
     loginHandler: () => void;
     registerHandler: () => void;
     unlockHandler: () => void;
     addTodoHandler: () => void;
+    setFilter: (filter: Filter) => void;
+    clearCompletedHandler: () => void;
+    showAuthFromLP: () => void;
+    showLP: () => void;
+    showPrivacyPolicy: (e?: Event) => void;
+    hidePrivacyPolicy: (e?: Event) => void;
   }
 }
 
@@ -530,6 +705,13 @@ window.unlockHandler = doUnlock;
 window.addTodoHandler = addTodo;
 window.__toggleTodo = toggleTodo;
 window.__deleteTodo = deleteTodo;
+window.__editTodo = startEditTodo;
+window.setFilter = setFilter;
+window.clearCompletedHandler = clearCompleted;
+window.showAuthFromLP = showAuthCard;
+window.showLP = showLP;
+window.showPrivacyPolicy = showPrivacyPolicy;
+window.hidePrivacyPolicy = hidePrivacyPolicy;
 
 // ========================
 // エントリポイント
