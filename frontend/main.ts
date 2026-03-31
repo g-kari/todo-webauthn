@@ -10,6 +10,20 @@ import {
   startAuthentication,
   browserSupportsWebAuthn,
 } from '@simplewebauthn/browser';
+import {
+  createEditor,
+  FORMAT_TEXT_COMMAND,
+  type LexicalEditor,
+} from 'lexical';
+import { registerRichText, HeadingNode, QuoteNode } from '@lexical/rich-text';
+import { createEmptyHistoryState, registerHistory } from '@lexical/history';
+import {
+  ListNode,
+  ListItemNode,
+  registerList,
+  INSERT_UNORDERED_LIST_COMMAND,
+  INSERT_ORDERED_LIST_COMMAND,
+} from '@lexical/list';
 
 // ========================
 // 型定義
@@ -30,6 +44,8 @@ interface TodoData {
   title: string;
   completed: boolean;
   priority?: Priority;
+  dueDate?: string; // "YYYY-MM-DD"
+  notes?: string;   // Lexical editor state JSON string
 }
 
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
@@ -53,6 +69,13 @@ let encryptionKey: CryptoKey | null = null;
 let todosCache: EncryptedTodo[] = [];
 let decryptedCache: DecryptedTodo[] = [];
 let currentFilter: Filter = 'all';
+
+/** 開いているLexicalエディタのマップ */
+const openEditors = new Map<string, { editor: LexicalEditor; cleanup: (() => void)[] }>();
+
+/** ドラッグ中のTodo ID */
+let draggedId: string | null = null;
+let dragOverId: string | null = null;
 
 // ========================
 // 起動処理
@@ -336,6 +359,7 @@ document.getElementById('logout-btn')!.addEventListener('click', async () => {
   todosCache = [];
   decryptedCache = [];
   currentFilter = 'all';
+  closeAllEditors();
   showLP();
 });
 
@@ -382,6 +406,9 @@ async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoDa
 // ========================
 
 async function loadTodos(): Promise<void> {
+  // エディタを全部閉じる（再描画するため）
+  closeAllEditors();
+
   const listEl = document.getElementById('todo-list')!;
   listEl.innerHTML = '<div class="loading"><span class="spinner"></span>読み込み中...</div>';
 
@@ -420,17 +447,444 @@ const EMPTY_MESSAGES: Record<Filter, string> = {
   all: 'TODOがありませんわ。追加してみてくださいませ！',
 };
 
+// ========================
+// 期日ユーティリティ
+// ========================
+
+function formatDueDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diff === 0) return '今日';
+  if (diff === 1) return '明日';
+  if (diff === -1) return '昨日';
+  if (diff > 0 && diff < 7) return `${diff}日後`;
+
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${month}/${day}`;
+}
+
+function createDueDateElement(todo: DecryptedTodo): HTMLElement {
+  const container = document.createElement('span');
+  container.className = 'todo-date-wrap';
+
+  if (todo.dueDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    const isOverdue = todo.dueDate < today && !todo.completed;
+    const isToday = todo.dueDate === today;
+
+    const badge = document.createElement('button');
+    badge.className = `todo-due-date${isOverdue ? ' overdue' : isToday ? ' today' : ''}`;
+    badge.textContent = formatDueDate(todo.dueDate);
+    badge.title = `期日: ${todo.dueDate}（クリックで変更）`;
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showDueDatePicker(todo.id, badge, todo.dueDate);
+    });
+    container.append(badge);
+  } else {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'todo-add-date';
+    addBtn.title = '期日を追加';
+    addBtn.setAttribute('aria-label', '期日を追加');
+    addBtn.textContent = '📅';
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showDueDatePicker(todo.id, addBtn, undefined);
+    });
+    container.append(addBtn);
+  }
+
+  return container;
+}
+
+function showDueDatePicker(todoId: string, anchor: HTMLElement, currentDate: string | undefined): void {
+  document.querySelector('.due-date-picker-popup')?.remove();
+
+  const popup = document.createElement('div');
+  popup.className = 'due-date-picker-popup';
+
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = currentDate ?? '';
+
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'btn-ghost btn-sm';
+  clearBtn.textContent = '期日を削除';
+  clearBtn.style.marginTop = '6px';
+  clearBtn.addEventListener('click', () => {
+    popup.remove();
+    void setDueDate(todoId, null);
+  });
+
+  input.addEventListener('change', () => {
+    const val = input.value;
+    popup.remove();
+    if (val) void setDueDate(todoId, val);
+  });
+
+  popup.append(input, clearBtn);
+  document.body.append(popup);
+
+  const rect = anchor.getBoundingClientRect();
+  const popupH = 90;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const top = spaceBelow > popupH
+    ? rect.bottom + window.scrollY + 4
+    : rect.top + window.scrollY - popupH - 4;
+  popup.style.top = `${top}px`;
+  popup.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 200)}px`;
+
+  setTimeout(() => {
+    input.focus();
+    const closeHandler = (e: MouseEvent): void => {
+      if (!popup.contains(e.target as Node)) {
+        popup.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('click', closeHandler);
+  }, 0);
+}
+
+async function setDueDate(id: string, date: string | null): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  try {
+    const data = await decryptTodo(todo.encrypted_data, todo.iv);
+    const newData: TodoData = { ...data };
+    if (date) {
+      newData.dueDate = date;
+    } else {
+      delete newData.dueDate;
+    }
+    const { encrypted_data, iv } = await encryptTodo(newData);
+    const res = await fetch(`/api/todos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted_data, iv }),
+    });
+    if (!res.ok) throw new Error('更新に失敗しましたわ');
+    await loadTodos();
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
+}
+
+// ========================
+// Google Calendar連携
+// ========================
+
+function openGCalLink(title: string, dueDate: string | undefined): void {
+  const params = new URLSearchParams({ text: title });
+  if (dueDate) {
+    const dateStr = dueDate.replace(/-/g, '');
+    const d = new Date(dueDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    const nextStr = d.toISOString().slice(0, 10).replace(/-/g, '');
+    params.set('dates', `${dateStr}/${nextStr}`);
+  }
+  window.open(
+    `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`,
+    '_blank',
+    'noopener,noreferrer'
+  );
+}
+
+// ========================
+// Lexicalメモエディタ
+// ========================
+
+function closeAllEditors(): void {
+  for (const [, entry] of openEditors) {
+    for (const c of entry.cleanup) c();
+    entry.editor.setRootElement(null);
+  }
+  openEditors.clear();
+}
+
+function closeEditorForTodo(todoId: string): void {
+  const entry = openEditors.get(todoId);
+  if (!entry) return;
+  for (const c of entry.cleanup) c();
+  entry.editor.setRootElement(null);
+  openEditors.delete(todoId);
+}
+
+function toggleNotesPanel(todoId: string, wrapper: HTMLElement, currentNotes: string | undefined): void {
+  const existing = wrapper.querySelector('.todo-notes-panel');
+  if (existing) {
+    closeEditorForTodo(todoId);
+    existing.remove();
+    return;
+  }
+  openNotesPanel(todoId, wrapper, currentNotes);
+}
+
+function openNotesPanel(todoId: string, wrapper: HTMLElement, initialNotes: string | undefined): void {
+  closeEditorForTodo(todoId);
+
+  const panel = document.createElement('div');
+  panel.className = 'todo-notes-panel';
+
+  // ツールバー
+  const toolbar = document.createElement('div');
+  toolbar.className = 'lexical-toolbar';
+
+  const toolbarDefs: { label: string; title: string; action: (ed: LexicalEditor) => void }[] = [
+    { label: 'B', title: '太字 (Ctrl+B)', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold') },
+    { label: 'I', title: 'イタリック (Ctrl+I)', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic') },
+    { label: 'S', title: '取り消し線', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough') },
+    { label: '<>', title: 'コード', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'code') },
+    { label: '• リスト', title: '箇条書き', action: (ed) => ed.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined) },
+    { label: '1. リスト', title: '番号付きリスト', action: (ed) => ed.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined) },
+  ];
+
+  const toolbarBtnEls: HTMLButtonElement[] = [];
+  for (const def of toolbarDefs) {
+    const btn = document.createElement('button');
+    btn.className = 'lexical-toolbar-btn';
+    btn.textContent = def.label;
+    btn.title = def.title;
+    btn.type = 'button';
+    toolbarBtnEls.push(btn);
+    toolbar.append(btn);
+  }
+
+  const sep = document.createElement('span');
+  sep.className = 'lexical-toolbar-sep';
+  toolbar.append(sep);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'lexical-toolbar-btn lexical-close-btn';
+  closeBtn.textContent = '✕';
+  closeBtn.title = '閉じる';
+  closeBtn.type = 'button';
+  toolbar.append(closeBtn);
+
+  // エディタ領域
+  const editorEl = document.createElement('div');
+  editorEl.className = 'lexical-editor';
+  editorEl.setAttribute('spellcheck', 'false');
+
+  panel.append(toolbar, editorEl);
+  wrapper.append(panel);
+
+  // Lexicalエディタ生成
+  const editor = createEditor({
+    namespace: `todo-notes-${todoId}`,
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode],
+    theme: {
+      paragraph: 'lp',
+      heading: { h1: 'lh1', h2: 'lh2' },
+      text: { bold: 'lb', italic: 'li', strikethrough: 'ls', code: 'lc' },
+      list: { ul: 'lul', ol: 'lol', listitem: 'lli', nested: { listitem: 'lli-nested' } },
+      quote: 'lq',
+    },
+    onError: (err) => { console.error('Lexical error:', err); },
+  });
+
+  editor.setRootElement(editorEl);
+
+  const unregRich = registerRichText(editor);
+  const unregHistory = registerHistory(editor, createEmptyHistoryState(), 300);
+  const unregList = registerList(editor);
+
+  // 初期ステートを読み込む
+  if (initialNotes) {
+    try {
+      const state = editor.parseEditorState(initialNotes);
+      editor.setEditorState(state);
+    } catch {
+      // 不正なステートは無視
+    }
+  }
+
+  // ツールバーボタンをエディタと接続
+  for (let i = 0; i < toolbarDefs.length; i++) {
+    const def = toolbarDefs[i];
+    const btn = toolbarBtnEls[i];
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // エディタのfocusを維持
+      def.action(editor);
+    });
+  }
+
+  closeBtn.addEventListener('click', () => {
+    closeEditorForTodo(todoId);
+    panel.remove();
+  });
+
+  // 自動保存（800ms debounce）
+  let saveTimeout: number | null = null;
+  const unregUpdate = editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
+    if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+    if (saveTimeout !== null) clearTimeout(saveTimeout);
+    saveTimeout = window.setTimeout(() => {
+      const json = JSON.stringify(editorState.toJSON());
+      void saveNotes(todoId, json);
+    }, 800);
+  });
+
+  openEditors.set(todoId, {
+    editor,
+    cleanup: [
+      unregRich,
+      unregHistory,
+      unregList,
+      unregUpdate,
+      () => { if (saveTimeout !== null) clearTimeout(saveTimeout); },
+    ],
+  });
+
+  // フォーカスを当てる
+  editor.focus();
+}
+
+async function saveNotes(id: string, notesJson: string): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  try {
+    const data = await decryptTodo(todo.encrypted_data, todo.iv);
+    const { encrypted_data, iv } = await encryptTodo({ ...data, notes: notesJson });
+    const res = await fetch(`/api/todos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted_data, iv }),
+    });
+    if (!res.ok) return;
+    // キャッシュのみ更新（フルリロード不要）
+    const cached = todosCache.find((t) => t.id === id);
+    if (cached) { cached.encrypted_data = encrypted_data; cached.iv = iv; }
+    const dec = decryptedCache.find((t) => t.id === id);
+    if (dec) { dec.notes = notesJson; dec.encrypted_data = encrypted_data; dec.iv = iv; }
+  } catch (err) {
+    console.error('メモ保存エラー:', err);
+  }
+}
+
+// ========================
+// ドラッグ＆ドロップ
+// ========================
+
+function setupDragAndDrop(listEl: HTMLElement): void {
+  listEl.addEventListener('dragstart', (e) => {
+    const handle = (e.target as HTMLElement).closest('.drag-handle');
+    if (!handle) { e.preventDefault(); return; }
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+    if (!wrapper) return;
+    draggedId = wrapper.dataset.id ?? null;
+    wrapper.classList.add('dragging');
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedId ?? '');
+    }
+  });
+
+  listEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+    if (!wrapper || wrapper.dataset.id === draggedId) return;
+    listEl.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
+    wrapper.classList.add('drag-over');
+    dragOverId = wrapper.dataset.id ?? null;
+  });
+
+  listEl.addEventListener('dragleave', (e) => {
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+    if (wrapper && !wrapper.contains(e.relatedTarget as Node)) {
+      wrapper.classList.remove('drag-over');
+    }
+  });
+
+  listEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    listEl.querySelectorAll('.dragging, .drag-over').forEach((el) => {
+      el.classList.remove('dragging', 'drag-over');
+    });
+    void handleDrop();
+  });
+
+  listEl.addEventListener('dragend', () => {
+    listEl.querySelectorAll('.dragging, .drag-over').forEach((el) => {
+      el.classList.remove('dragging', 'drag-over');
+    });
+    draggedId = null;
+    dragOverId = null;
+  });
+}
+
+async function handleDrop(): Promise<void> {
+  const fromId = draggedId;
+  const toId = dragOverId;
+  draggedId = null;
+  dragOverId = null;
+
+  if (!fromId || !toId || fromId === toId) return;
+
+  const allIds = decryptedCache.map((t) => t.id);
+  const fromIdx = allIds.indexOf(fromId);
+  let toIdx = allIds.indexOf(toId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  // 楽観的更新
+  const newIds = [...allIds];
+  newIds.splice(fromIdx, 1);
+  if (fromIdx < toIdx) toIdx--;
+  newIds.splice(toIdx, 0, fromId);
+
+  const idMap = new Map(decryptedCache.map((t) => [t.id, t]));
+  decryptedCache = newIds.map((id) => idMap.get(id)!).filter(Boolean);
+  const encIdMap = new Map(todosCache.map((t) => [t.id, t]));
+  todosCache = newIds.map((id) => encIdMap.get(id)!).filter(Boolean);
+  renderTodos(decryptedCache);
+
+  try {
+    const res = await fetch('/api/todos/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: newIds }),
+    });
+    if (!res.ok) throw new Error('並び替えに失敗しましたわ');
+  } catch (err: unknown) {
+    alert((err as Error).message);
+    await loadTodos();
+  }
+}
+
+// ========================
+// TODO描画
+// ========================
+
 function renderTodoItem(todo: DecryptedTodo): HTMLElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'todo-wrapper';
+  wrapper.dataset.id = todo.id;
+  wrapper.draggable = true;
+
   const item = document.createElement('div');
   item.className = `todo-item${todo.completed ? ' completed' : ''}`;
   item.dataset.id = todo.id;
 
+  // ドラッグハンドル
+  const dragHandle = document.createElement('span');
+  dragHandle.className = 'drag-handle';
+  dragHandle.setAttribute('aria-hidden', 'true');
+  dragHandle.textContent = '⠿';
+  dragHandle.title = 'ドラッグで並び替え';
+
+  // チェックボックス
   const checkbox = document.createElement('button');
   checkbox.className = 'todo-checkbox';
   checkbox.title = todo.completed ? '未完了に戻す' : '完了にする';
   checkbox.textContent = todo.completed ? '✓' : '';
   checkbox.addEventListener('click', () => { void toggleTodo(todo.id, !todo.completed); });
 
+  // 優先度バッジ
   const priority = todo.priority ?? 'medium';
   const priorityBtn = document.createElement('button');
   priorityBtn.className = `todo-priority priority-${priority}`;
@@ -438,20 +892,45 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   priorityBtn.textContent = PRIORITY_LABEL[priority];
   priorityBtn.addEventListener('click', () => { void cyclePriority(todo.id, priority); });
 
+  // タイトル
   const titleEl = document.createElement('span');
   titleEl.className = 'todo-title';
   titleEl.textContent = todo.title;
   titleEl.title = 'ダブルクリックで編集';
   titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
 
+  // 期日バッジ
+  const dueDateEl = createDueDateElement(todo);
+
+  // Google Calendarボタン
+  const gcalBtn = document.createElement('button');
+  gcalBtn.className = 'todo-gcal-btn';
+  gcalBtn.title = 'Google Calendarに追加';
+  gcalBtn.setAttribute('aria-label', 'Google Calendarに追加');
+  gcalBtn.innerHTML =
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+    '<path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
+    'M5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
+  gcalBtn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
+
+  // メモボタン
+  const notesBtn = document.createElement('button');
+  notesBtn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
+  notesBtn.title = todo.notes ? 'メモを編集' : 'メモを追加';
+  notesBtn.setAttribute('aria-label', todo.notes ? 'メモを編集' : 'メモを追加');
+  notesBtn.textContent = '📝';
+  notesBtn.addEventListener('click', () => toggleNotesPanel(todo.id, wrapper, todo.notes));
+
+  // 削除ボタン
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'btn-danger';
   deleteBtn.title = '削除';
   deleteBtn.textContent = '×';
   deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
 
-  item.append(checkbox, priorityBtn, titleEl, deleteBtn);
-  return item;
+  item.append(dragHandle, checkbox, priorityBtn, titleEl, dueDateEl, gcalBtn, notesBtn, deleteBtn);
+  wrapper.append(item);
+  return wrapper;
 }
 
 function renderTodos(todos: DecryptedTodo[]): void {
@@ -479,6 +958,7 @@ function renderTodos(todos: DecryptedTodo[]): void {
   }
 
   listEl.replaceChildren(...filtered.map(renderTodoItem));
+  setupDragAndDrop(listEl);
 }
 
 async function addTodo(): Promise<void> {
