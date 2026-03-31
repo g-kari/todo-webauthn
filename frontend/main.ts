@@ -24,14 +24,25 @@ interface EncryptedTodo {
   updated_at: string;
 }
 
+type Priority = 'high' | 'medium' | 'low';
+
 interface TodoData {
   title: string;
   completed: boolean;
+  priority?: Priority;
 }
 
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
 
 type Filter = 'all' | 'active' | 'completed';
+
+const PRIORITY_LABEL: Record<Priority, string> = { high: '高', medium: '中', low: '低' };
+const PRIORITY_NEXT: Record<Priority, Priority> = { high: 'medium', medium: 'low', low: 'high' };
+const PRIORITY_TITLE: Record<Priority, string> = {
+  high: '優先度: 高（クリックで変更）',
+  medium: '優先度: 中（クリックで変更）',
+  low: '優先度: 低（クリックで変更）',
+};
 
 // ========================
 // 状態管理
@@ -420,6 +431,13 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   checkbox.textContent = todo.completed ? '✓' : '';
   checkbox.addEventListener('click', () => { void toggleTodo(todo.id, !todo.completed); });
 
+  const priority = todo.priority ?? 'medium';
+  const priorityBtn = document.createElement('button');
+  priorityBtn.className = `todo-priority priority-${priority}`;
+  priorityBtn.title = PRIORITY_TITLE[priority];
+  priorityBtn.textContent = PRIORITY_LABEL[priority];
+  priorityBtn.addEventListener('click', () => { void cyclePriority(todo.id, priority); });
+
   const titleEl = document.createElement('span');
   titleEl.className = 'todo-title';
   titleEl.textContent = todo.title;
@@ -432,7 +450,7 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   deleteBtn.textContent = '×';
   deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
 
-  item.append(checkbox, titleEl, deleteBtn);
+  item.append(checkbox, priorityBtn, titleEl, deleteBtn);
   return item;
 }
 
@@ -489,6 +507,24 @@ async function toggleTodo(id: string, completed: boolean): Promise<void> {
   try {
     const data = await decryptTodo(todo.encrypted_data, todo.iv);
     const { encrypted_data, iv } = await encryptTodo({ ...data, completed });
+    const res = await fetch(`/api/todos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted_data, iv }),
+    });
+    if (!res.ok) throw new Error('更新に失敗しましたわ');
+    await loadTodos();
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
+}
+
+async function cyclePriority(id: string, current: Priority): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  try {
+    const data = await decryptTodo(todo.encrypted_data, todo.iv);
+    const { encrypted_data, iv } = await encryptTodo({ ...data, priority: PRIORITY_NEXT[current] });
     const res = await fetch(`/api/todos/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

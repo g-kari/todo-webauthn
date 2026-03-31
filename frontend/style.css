@@ -769,6 +769,40 @@ input::placeholder { color: var(--color-muted); }
 
 .todo-edit-input:focus { border-color: var(--color-text); }
 
+/* 優先度バッジ */
+.todo-priority {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+  letter-spacing: 0.02em;
+}
+.todo-priority:hover { transform: scale(1.08); }
+.todo-priority:active { transform: scale(0.95); }
+
+.priority-high {
+  background: #fff0ed;
+  color: var(--color-danger);
+  border: 1px solid #ffc0b0;
+}
+.priority-medium {
+  background: transparent;
+  color: var(--color-border);
+  border: 1px solid var(--color-border);
+}
+.priority-low {
+  background: #f5f8e8;
+  color: var(--color-accent);
+  border: 1px solid #d4e09a;
+}
+
+.todo-item.completed .todo-priority {
+  opacity: 0.4;
+}
+
 /* 削除ボタン */
 .btn-danger {
   width: 28px;
