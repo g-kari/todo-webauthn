@@ -368,11 +368,13 @@ async function performAuthentication(username: string, messageId: string): Promi
   encryptionKey = await deriveEncryptionKey(prfResults);
 
   const meRes = await fetch('/api/auth/me');
-  if (meRes.ok) {
-    const user = await meRes.json() as { username: string };
-    showTodoSection(user.username);
-    await loadTodos();
+  if (!meRes.ok) {
+    encryptionKey = null;
+    throw new Error('セッション取得に失敗しましたわ');
   }
+  const user = await meRes.json() as { username: string };
+  showTodoSection(user.username);
+  await loadTodos();
 
   void messageId; // 使われなかった場合の警告回避
 }
@@ -433,19 +435,33 @@ async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoDa
 // TODO操作
 // ========================
 
-/** Todo を部分更新して再読み込みする共通処理 */
+/** Todo を部分更新する（楽観的UI更新→バックグラウンド同期） */
 async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
   const todo = todosCache.find((t) => t.id === id);
   if (!todo) return;
-  const data = await decryptTodo(todo.encrypted_data, todo.iv);
+
+  // 楽観的にキャッシュを更新して即座に再描画
+  const dec = decryptedCache.find((t) => t.id === id);
+  if (dec) Object.assign(dec, patch);
+  renderTodos(decryptedCache);
+
+  // 元の暗号化データで復号してから再暗号化
+  const origEncData = todo.encrypted_data;
+  const origIv = todo.iv;
+  const data = await decryptTodo(origEncData, origIv);
   const { encrypted_data, iv } = await encryptTodo({ ...data, ...patch });
+
+  // キャッシュの暗号化データを更新
+  todo.encrypted_data = encrypted_data;
+  todo.iv = iv;
+  if (dec) { dec.encrypted_data = encrypted_data; dec.iv = iv; }
+
   const res = await fetch(`/api/todos/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ encrypted_data, iv }),
   });
   if (!res.ok) throw new Error('更新に失敗しましたわ');
-  await loadTodos();
 }
 
 async function loadTodos(): Promise<void> {
@@ -781,10 +797,23 @@ function createSettingsChoices<T extends string>(
 // 共通UIビルダー
 // ========================
 
-const GCAL_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-  '<path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
-  'M5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
+const GCAL_SVG_PATH =
+  'M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
+  'M5 19V8h14v11H5zm2-9h5v5H7z';
+
+function createGCalSvg(): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', GCAL_SVG_PATH);
+  svg.appendChild(path);
+  return svg;
+}
 
 function mkPriorityBadge(todo: DecryptedTodo, clickable: boolean): HTMLElement {
   const priority = todo.priority ?? 'medium';
@@ -803,7 +832,7 @@ function mkGCalBtn(todo: DecryptedTodo): HTMLButtonElement {
   btn.className = 'todo-gcal-btn';
   btn.title = 'Google Calendarに追加';
   btn.setAttribute('aria-label', 'Google Calendarに追加');
-  btn.innerHTML = GCAL_SVG;
+  btn.appendChild(createGCalSvg());
   btn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
   return btn;
 }
