@@ -633,9 +633,10 @@ async function clearCompleted(): Promise<void> {
 
   try {
     await Promise.all(
-      completedIds.map((id) =>
-        fetch(`/api/todos/${id}`, { method: 'DELETE' })
-      )
+      completedIds.map(async (id) => {
+        const res = await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`削除に失敗しましたわ (${id})`);
+      })
     );
     await loadTodos();
   } catch (err: unknown) {

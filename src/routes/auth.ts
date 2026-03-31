@@ -107,7 +107,12 @@ auth.post('/register/verify', async (c) => {
 
   const db = createDb(c.env);
 
-  const challengeRow = await db.findLatestChallenge(userId, 'registration');
+  // 既存ユーザーの場合はDBから正規のuserIdを取得し、クライアント送信値を無視する
+  // （攻撃者が被害者のuserIdを使って認証器を追加する攻撃を防ぐ）
+  const existingUserByName = await db.findUserByUsername(username);
+  const authorizedUserId = existingUserByName?.id ?? userId;
+
+  const challengeRow = await db.findLatestChallenge(authorizedUserId, 'registration');
   if (!challengeRow) return c.json({ error: 'チャレンジが見つからないか期限切れですわ' }, 400);
 
   let verification;
