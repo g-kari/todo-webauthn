@@ -171,6 +171,8 @@ function showTodoSection(username: string): void {
   document.getElementById('lock-icon')!.textContent = '🔓';
   document.getElementById('lock-label')!.textContent = username;
   document.getElementById('logout-btn')!.style.display = '';
+  // リストDnDはイベント委譲なので一度だけ設定すればよい
+  setupDragAndDrop(document.getElementById('todo-list')!);
 }
 
 // ========================
@@ -435,6 +437,14 @@ async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoDa
 // TODO操作
 // ========================
 
+/** 両キャッシュの暗号化フィールドを更新する共通処理 */
+function syncEncryptedCache(id: string, encrypted_data: string, iv: string): void {
+  const cached = todosCache.find((t) => t.id === id);
+  if (cached) { cached.encrypted_data = encrypted_data; cached.iv = iv; }
+  const dec = decryptedCache.find((t) => t.id === id);
+  if (dec) { dec.encrypted_data = encrypted_data; dec.iv = iv; }
+}
+
 /** Todo を部分更新する（楽観的UI更新→バックグラウンド同期） */
 async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
   const todo = todosCache.find((t) => t.id === id);
@@ -445,16 +455,9 @@ async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
   if (dec) Object.assign(dec, patch);
   renderTodos(decryptedCache);
 
-  // 元の暗号化データで復号してから再暗号化
-  const origEncData = todo.encrypted_data;
-  const origIv = todo.iv;
-  const data = await decryptTodo(origEncData, origIv);
+  const data = await decryptTodo(todo.encrypted_data, todo.iv);
   const { encrypted_data, iv } = await encryptTodo({ ...data, ...patch });
-
-  // キャッシュの暗号化データを更新
-  todo.encrypted_data = encrypted_data;
-  todo.iv = iv;
-  if (dec) { dec.encrypted_data = encrypted_data; dec.iv = iv; }
+  syncEncryptedCache(id, encrypted_data, iv);
 
   const res = await fetch(`/api/todos/${id}`, {
     method: 'PUT',
@@ -869,7 +872,6 @@ function getEffectiveStatus(todo: DecryptedTodo): KanbanStatus {
 }
 
 function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
-  container.className = 'todo-list kanban-board';
 
   const columns = KANBAN_ORDER.map((status) => {
     const col = document.createElement('div');
@@ -1157,11 +1159,9 @@ async function saveNotes(id: string, notesJson: string): Promise<void> {
       body: JSON.stringify({ encrypted_data, iv }),
     });
     if (!res.ok) return;
-    // キャッシュのみ更新（フルリロード不要）
-    const cached = todosCache.find((t) => t.id === id);
-    if (cached) { cached.encrypted_data = encrypted_data; cached.iv = iv; }
+    syncEncryptedCache(id, encrypted_data, iv);
     const dec = decryptedCache.find((t) => t.id === id);
-    if (dec) { dec.notes = notesJson; dec.encrypted_data = encrypted_data; dec.iv = iv; }
+    if (dec) dec.notes = notesJson;
   } catch (err) {
     console.error('メモ保存エラー:', err);
   }
@@ -1313,13 +1313,12 @@ function renderTodos(todos: DecryptedTodo[]): void {
   countEl.textContent = todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
   clearWrap.style.display = done > 0 && currentView === 'list' ? '' : 'none';
 
+  listEl.className = currentView === 'kanban' ? 'todo-list kanban-board' : 'todo-list';
+
   if (currentView === 'kanban') {
     renderKanban(todos, listEl);
     return;
   }
-
-  // リストビューに戻す際にクラスを復元
-  listEl.className = 'todo-list';
 
   const filtered = applyFilter(todos);
 
@@ -1337,7 +1336,6 @@ function renderTodos(todos: DecryptedTodo[]): void {
   }
 
   listEl.replaceChildren(...filtered.map(renderTodoItem));
-  setupDragAndDrop(listEl);
 }
 
 async function addTodo(): Promise<void> {
