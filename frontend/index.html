@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebAuthn TODO</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo">
+          <span class="logo-icon">🔐</span>
+          <span>WebAuthn TODO</span>
+        </div>
+        <div class="header-actions">
+          <div id="lock-status" class="lock-status locked" style="display:none">
+            <span id="lock-icon">🔒</span>
+            <span id="lock-label">ロック中</span>
+          </div>
+          <button id="logout-btn" class="btn-ghost" style="display:none">ログアウト</button>
+        </div>
+      </header>
+
+      <!-- 認証セクション -->
+      <div id="auth-section">
+        <div class="auth-title">
+          <h2>パスキーでサインイン</h2>
+          <p>指紋・顔認証・1Password などで認証して、暗号化されたTODOにアクセス</p>
+        </div>
+        <div class="card">
+          <div class="auth-tabs">
+            <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">ログイン</button>
+            <button class="tab-btn" id="tab-register" onclick="switchTab('register')">新規登録</button>
+          </div>
+
+          <!-- ログインフォーム -->
+          <div id="login-form">
+            <div class="form-group">
+              <label for="login-username">ユーザー名</label>
+              <input type="text" id="login-username" placeholder="ユーザー名を入力" autocomplete="username webauthn" />
+            </div>
+            <button class="btn-primary" id="login-btn" onclick="loginHandler()">
+              パスキーでログイン
+            </button>
+            <div id="login-message" class="message"></div>
+          </div>
+
+          <!-- 登録フォーム -->
+          <div id="register-form" style="display:none">
+            <div class="form-group">
+              <label for="reg-username">ユーザー名</label>
+              <input type="text" id="reg-username" placeholder="ユーザー名を入力" autocomplete="username" />
+            </div>
+            <button class="btn-primary" id="register-btn" onclick="registerHandler()">
+              パスキーを登録
+            </button>
+            <div id="register-message" class="message"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- アンロックセクション（セッションあり・鍵なし） -->
+      <div id="unlock-section">
+        <div class="unlock-icon">🔒</div>
+        <h2 style="margin-bottom:8px">TODOをアンロック</h2>
+        <p class="unlock-desc">
+          セッションは有効ですが、暗号化鍵がありません。<br />
+          パスキーで認証してTODOを復号してください。
+        </p>
+        <button class="btn-primary" style="max-width:280px;margin:0 auto" onclick="unlockHandler()">
+          パスキーでアンロック
+        </button>
+        <div id="unlock-message" class="message" style="max-width:280px;margin:12px auto 0"></div>
+      </div>
+
+      <!-- TODOセクション -->
+      <div id="todo-section">
+        <div class="add-todo-form">
+          <input
+            type="text"
+            id="new-todo-input"
+            placeholder="新しいTODOを入力..."
+            onkeydown="if(event.key==='Enter') addTodoHandler()"
+          />
+          <button onclick="addTodoHandler()">+</button>
+        </div>
+
+        <div id="todo-count" class="todo-count"></div>
+
+        <div id="todo-list" class="todo-list">
+          <div class="loading"><span class="spinner"></span>読み込み中...</div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
