@@ -11,12 +11,7 @@
     "not_found_handling": "single-page-application"
   },
   // カスタムドメイン設定
-  "routes": [
-    {
-      "pattern": "todo.0g0.xyz/*",
-      "custom_domain": true
-    }
-  ],
+  "custom_domains": ["todo.0g0.xyz"],
   // 本番環境の設定
   "vars": {
     "RP_NAME": "WebAuthn TODO",
