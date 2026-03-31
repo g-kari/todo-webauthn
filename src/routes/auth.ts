@@ -134,7 +134,8 @@ auth.post('/register/verify', async (c) => {
 
   const { credential: cred, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
 
-  await db.createUserIfNotExists(userId, username);
+  // authorizedUserId を使う（新規ユーザーでもクライアント送信 userId を信用しない）
+  await db.createUserIfNotExists(authorizedUserId, username);
 
   const user = await db.findUserByUsername(username);
   if (!user) return c.json({ error: 'ユーザーの作成に失敗しましたわ' }, 500);
@@ -151,7 +152,7 @@ auth.post('/register/verify', async (c) => {
   });
 
   await db.createPrfSalt(cred.id, prfSalt);
-  await db.deleteRegistrationChallenges(userId);
+  await db.deleteRegistrationChallenges(authorizedUserId);
 
   const token = await createJwt({ userId: user.id, credentialId: cred.id }, c.env.JWT_SECRET);
   setCookie(c, 'session', token, {
