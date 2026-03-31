@@ -98,6 +98,9 @@ const openEditors = new Map<string, { editor: LexicalEditor; cleanup: (() => voi
 let draggedId: string | null = null;
 let dragOverId: string | null = null;
 
+/** 検索クエリ（小文字正規化済み） */
+let searchQuery = '';
+
 /** ユーザー設定 */
 let settings: UserSettings = { ...DEFAULT_SETTINGS };
 let currentView: ViewMode = 'list';
@@ -497,10 +500,28 @@ async function loadTodos(): Promise<void> {
   }
 }
 
+function applySearch(todos: DecryptedTodo[]): DecryptedTodo[] {
+  if (!searchQuery) return todos;
+  return todos.filter((t) => t.title.toLowerCase().includes(searchQuery));
+}
+
 function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
   if (currentFilter === 'active') return todos.filter((t) => !t.completed);
   if (currentFilter === 'completed') return todos.filter((t) => t.completed);
   return todos;
+}
+
+// ========================
+// 検索
+// ========================
+
+function setSearch(q: string): void {
+  searchQuery = q.toLowerCase();
+  const clearBtn = document.getElementById('search-clear')!;
+  clearBtn.style.display = searchQuery ? '' : 'none';
+  const input = document.getElementById('search-input') as HTMLInputElement;
+  if (input.value !== q) input.value = q;
+  renderTodos(decryptedCache);
 }
 
 const EMPTY_MESSAGES: Record<Filter, string> = {
@@ -1309,25 +1330,30 @@ function renderTodos(todos: DecryptedTodo[]): void {
   const countEl = document.getElementById('todo-count')!;
   const clearWrap = document.getElementById('clear-completed-wrap')!;
 
-  const done = todos.filter((t) => t.completed).length;
-  countEl.textContent = todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
-  clearWrap.style.display = done > 0 && currentView === 'list' ? '' : 'none';
+  const searched = applySearch(todos);
+  const done = searched.filter((t) => t.completed).length;
+  countEl.textContent = searchQuery
+    ? `${searched.length} 件一致`
+    : todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
+  clearWrap.style.display = done > 0 && currentView === 'list' && !searchQuery ? '' : 'none';
 
   listEl.className = currentView === 'kanban' ? 'todo-list kanban-board' : 'todo-list';
 
   if (currentView === 'kanban') {
-    renderKanban(todos, listEl);
+    renderKanban(searched, listEl);
     return;
   }
 
-  const filtered = applyFilter(todos);
+  const filtered = applyFilter(searched);
 
   if (filtered.length === 0) {
     const icon = document.createElement('div');
     icon.className = 'empty-icon';
-    icon.textContent = '📝';
+    icon.textContent = searchQuery ? '🔍' : '📝';
     const msg = document.createElement('p');
-    msg.textContent = EMPTY_MESSAGES[currentFilter];
+    msg.textContent = searchQuery
+      ? `"${searchQuery}" に一致するTODOはありませんわ`
+      : EMPTY_MESSAGES[currentFilter];
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.append(icon, msg);
@@ -1553,6 +1579,7 @@ declare global {
     hidePrivacyPolicy: (e?: Event) => void;
     setView: (view: ViewMode) => void;
     toggleSettingsPanel: () => void;
+    setSearch: (q: string) => void;
   }
 }
 
@@ -1569,6 +1596,7 @@ window.showPrivacyPolicy = showPrivacyPolicy;
 window.hidePrivacyPolicy = hidePrivacyPolicy;
 window.setView = setView;
 window.toggleSettingsPanel = toggleSettingsPanel;
+window.setSearch = setSearch;
 
 // ========================
 // Service Worker 登録
