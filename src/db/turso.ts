@@ -129,12 +129,13 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
     },
 
     async findLatestChallenge(userId, type) {
-      const sql =
-        type === 'registration'
-          ? "SELECT challenge FROM challenges WHERE user_id = ? AND type = 'registration' AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
-          : "SELECT challenge FROM challenges WHERE type = 'authentication' AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1";
-      const args = type === 'registration' ? [userId] : [];
-      return firstRow<Challenge>(await client.execute({ sql, args }));
+      // 登録・認証どちらもユーザーに紐付けてチャレンジを取得する（並行ログイン時の混線防止）
+      return firstRow<Challenge>(
+        await client.execute({
+          sql: `SELECT challenge FROM challenges WHERE user_id = ? AND type = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1`,
+          args: [userId, type],
+        })
+      );
     },
 
     async deleteRegistrationChallenges(userId) {
@@ -144,10 +145,11 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
       });
     },
 
-    async deleteUsedAuthChallenge() {
-      await client.execute(
-        "DELETE FROM challenges WHERE type = 'authentication' AND expires_at < datetime('now', '+6 minutes')"
-      );
+    async deleteAuthChallengeByValue(challenge) {
+      await client.execute({
+        sql: "DELETE FROM challenges WHERE challenge = ? AND type = 'authentication'",
+        args: [challenge],
+      });
     },
 
     // ===== PRFソルト =====

@@ -40,14 +40,27 @@ function generateBase64URLId(): string {
 // ========================
 // 登録: オプション生成
 // ========================
+const USERNAME_MAX_LEN = 64;
+const USERNAME_PATTERN = /^[\w\-.@]+$/u;
+
+function validateUsername(raw: string): { value: string } | { error: string } {
+  const value = raw?.trim() ?? '';
+  if (!value) return { error: 'ユーザー名は必須ですわ' };
+  if (value.length > USERNAME_MAX_LEN) return { error: `ユーザー名は${USERNAME_MAX_LEN}文字以内にしてくださいませ` };
+  if (!USERNAME_PATTERN.test(value)) return { error: 'ユーザー名に使えない文字が含まれていますわ' };
+  return { value };
+}
+
 auth.post('/register/options', async (c) => {
-  const { username } = await c.req.json<{ username: string }>();
-  if (!username?.trim()) return c.json({ error: 'ユーザー名は必須ですわ' }, 400);
+  const { username: rawUsername } = await c.req.json<{ username: string }>();
+  const validated = validateUsername(rawUsername);
+  if ('error' in validated) return c.json({ error: validated.error }, 400);
+  const username = validated.value;
 
   const db = createDb(c.env);
   await db.cleanupExpiredChallenges();
 
-  const existingUser = await db.findUserByUsername(username.trim());
+  const existingUser = await db.findUserByUsername(username);
   const userId = existingUser?.id ?? generateId();
 
   const existingCreds = existingUser ? await db.findCredentialsByUserId(existingUser.id) : [];
@@ -62,7 +75,7 @@ auth.post('/register/options', async (c) => {
   const options = await generateRegistrationOptions({
     rpName: c.env.RP_NAME,
     rpID: c.env.RP_ID,
-    userName: username.trim(),
+    userName: username,
     userID: new TextEncoder().encode(userId) as Uint8Array<ArrayBuffer>,
     attestationType: 'none',
     excludeCredentials,
@@ -106,8 +119,8 @@ auth.post('/register/verify', async (c) => {
       expectedRPID: c.env.RP_ID,
       requireUserVerification: true,
     });
-  } catch (err) {
-    return c.json({ error: `登録検証に失敗しましたわ: ${String(err)}` }, 400);
+  } catch {
+    return c.json({ error: '登録検証に失敗しましたわ' }, 400);
   }
 
   if (!verification.verified || !verification.registrationInfo) {
@@ -116,9 +129,9 @@ auth.post('/register/verify', async (c) => {
 
   const { credential: cred, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
 
-  await db.createUserIfNotExists(userId, username.trim());
+  await db.createUserIfNotExists(userId, username);
 
-  const user = await db.findUserByUsername(username.trim());
+  const user = await db.findUserByUsername(username);
   if (!user) return c.json({ error: 'ユーザーの作成に失敗しましたわ' }, 500);
 
   await db.createCredential({
@@ -161,7 +174,9 @@ auth.post('/login/options', async (c) => {
   const prfSalts: Record<string, string> = {};
 
   if (username) {
-    const user = await db.findUserByUsername(username.trim());
+    const validated = validateUsername(username);
+    if ('error' in validated) return c.json({ error: validated.error }, 400);
+    const user = await db.findUserByUsername(validated.value);
     if (!user) return c.json({ error: 'ユーザーが見つかりませんわ' }, 404);
 
     userId = user.id;
@@ -201,7 +216,8 @@ auth.post('/login/verify', async (c) => {
   const storedCred = await db.findCredentialById(credentialId);
   if (!storedCred) return c.json({ error: 'クレデンシャルが見つかりませんわ' }, 404);
 
-  const challengeRow = await db.findLatestChallenge(null, 'authentication');
+  // クレデンシャルのユーザーに紐付いたチャレンジのみを取得（並行ログイン時の混線を防ぐ）
+  const challengeRow = await db.findLatestChallenge(storedCred.user_id, 'authentication');
   if (!challengeRow) return c.json({ error: 'チャレンジが見つからないか期限切れですわ' }, 400);
 
   let verification;
@@ -221,14 +237,15 @@ auth.post('/login/verify', async (c) => {
       },
       requireUserVerification: true,
     });
-  } catch (err) {
-    return c.json({ error: `認証検証に失敗しましたわ: ${String(err)}` }, 400);
+  } catch {
+    return c.json({ error: '認証検証に失敗しましたわ' }, 400);
   }
 
   if (!verification.verified) return c.json({ error: '認証が検証できませんでしたわ' }, 400);
 
   await db.updateCredentialCounter(credentialId, verification.authenticationInfo.newCounter);
-  await db.deleteUsedAuthChallenge();
+  // 特定のチャレンジ値で削除（他ユーザーのチャレンジを巻き込まない）
+  await db.deleteAuthChallengeByValue(challengeRow.challenge);
 
   const token = await createJwt({ userId: storedCred.user_id, credentialId }, c.env.JWT_SECRET);
   setCookie(c, 'session', token, {

@@ -123,18 +123,12 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     },
 
     async findLatestChallenge(userId, type) {
-      if (type === 'registration') {
-        return db
-          .prepare(
-            "SELECT challenge FROM challenges WHERE user_id = ? AND type = 'registration' AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
-          )
-          .bind(userId)
-          .first<Challenge>();
-      }
+      // 登録・認証どちらもユーザーに紐付けてチャレンジを取得する（並行ログイン時の混線防止）
       return db
         .prepare(
-          "SELECT challenge FROM challenges WHERE type = 'authentication' AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
+          "SELECT challenge FROM challenges WHERE user_id = ? AND type = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
         )
+        .bind(userId, type)
         .first<Challenge>();
     },
 
@@ -145,11 +139,10 @@ export function createD1Adapter(db: D1Database): DbAdapter {
         .run();
     },
 
-    async deleteUsedAuthChallenge() {
+    async deleteAuthChallengeByValue(challenge) {
       await db
-        .prepare(
-          "DELETE FROM challenges WHERE type = 'authentication' AND expires_at < datetime('now', '+6 minutes')"
-        )
+        .prepare("DELETE FROM challenges WHERE challenge = ? AND type = 'authentication'")
+        .bind(challenge)
         .run();
     },
 

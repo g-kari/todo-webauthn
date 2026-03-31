@@ -35,7 +35,8 @@ export interface DbAdapter {
     type: 'registration' | 'authentication'
   ): Promise<Challenge | null>;
   deleteRegistrationChallenges(userId: string): Promise<void>;
-  deleteUsedAuthChallenge(): Promise<void>;
+  /** 認証済みチャレンジをchallenge値で特定して削除する（他ユーザーのチャレンジを巻き込まない） */
+  deleteAuthChallengeByValue(challenge: string): Promise<void>;
 
   // ===== PRFソルト =====
   createPrfSalt(credentialId: string, salt: string): Promise<void>;
