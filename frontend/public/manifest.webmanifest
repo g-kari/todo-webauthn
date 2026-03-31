@@ -1,0 +1,26 @@
+{
+  "name": "WebAuthn TODO",
+  "short_name": "WA TODO",
+  "description": "パスキーで守られた暗号化TODOアプリ。サーバーはTODOの内容を一切読めません。",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fefbfb",
+  "theme_color": "#483030",
+  "lang": "ja",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

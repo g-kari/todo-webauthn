@@ -714,6 +714,18 @@ window.showPrivacyPolicy = showPrivacyPolicy;
 window.hidePrivacyPolicy = hidePrivacyPolicy;
 
 // ========================
+// Service Worker 登録
+// ========================
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // SWの登録失敗は非クリティカル（PWA機能なしで動作続行）
+    });
+  });
+}
+
+// ========================
 // エントリポイント
 // ========================
 
