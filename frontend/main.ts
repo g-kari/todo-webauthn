@@ -433,6 +433,21 @@ async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoDa
 // TODO操作
 // ========================
 
+/** Todo を部分更新して再読み込みする共通処理 */
+async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  const data = await decryptTodo(todo.encrypted_data, todo.iv);
+  const { encrypted_data, iv } = await encryptTodo({ ...data, ...patch });
+  const res = await fetch(`/api/todos/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ encrypted_data, iv }),
+  });
+  if (!res.ok) throw new Error('更新に失敗しましたわ');
+  await loadTodos();
+}
+
 async function loadTodos(): Promise<void> {
   // エディタを全部閉じる（再描画するため）
   closeAllEditors();
@@ -579,24 +594,9 @@ function showDueDatePicker(todoId: string, anchor: HTMLElement, currentDate: str
 }
 
 async function setDueDate(id: string, date: string | null): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
   try {
-    const data = await decryptTodo(todo.encrypted_data, todo.iv);
-    const newData: TodoData = { ...data };
-    if (date) {
-      newData.dueDate = date;
-    } else {
-      delete newData.dueDate;
-    }
-    const { encrypted_data, iv } = await encryptTodo(newData);
-    const res = await fetch(`/api/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted_data, iv }),
-    });
-    if (!res.ok) throw new Error('更新に失敗しましたわ');
-    await loadTodos();
+    // date が null のとき undefined を渡すと JSON.stringify でキーが省略される
+    await patchTodo(id, { dueDate: date ?? undefined });
   } catch (err: unknown) {
     alert((err as Error).message);
   }
@@ -675,6 +675,7 @@ function toggleSettingsPanel(): void {
 function buildSettingsPanel(panel: HTMLElement): void {
   panel.replaceChildren();
 
+  // ヘッダー
   const header = document.createElement('div');
   header.className = 'settings-header';
   const title = document.createElement('span');
@@ -689,29 +690,22 @@ function buildSettingsPanel(panel: HTMLElement): void {
 
   // 表示モード
   const viewSection = createSettingsSection('表示モード');
-  const viewBtns = document.createElement('div');
-  viewBtns.className = 'settings-row';
-  for (const [v, label] of [['list', '☰ リスト'], ['kanban', '⬛ カンバン']] as const) {
-    const btn = document.createElement('button');
-    btn.className = `settings-choice${currentView === v ? ' active' : ''}`;
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      setView(v);
-      buildSettingsPanel(panel);
-    });
-    viewBtns.append(btn);
-  }
-  viewSection.append(viewBtns);
+  viewSection.append(createSettingsChoices(
+    [['list', '☰ リスト'], ['kanban', '⬛ カンバン']],
+    currentView,
+    (v) => { setView(v); buildSettingsPanel(panel); }
+  ));
   panel.append(viewSection);
 
   // カンバン列名
   const colSection = createSettingsSection('カンバン列名');
+  const COL_LABELS: Record<KanbanStatus, string> = { todo: '未着手', doing: '進行中', done: '完了' };
   for (const status of KANBAN_ORDER) {
     const row = document.createElement('div');
     row.className = 'settings-input-row';
     const lbl = document.createElement('label');
     lbl.className = 'settings-label';
-    lbl.textContent = { todo: '未着手', doing: '進行中', done: '完了' }[status];
+    lbl.textContent = COL_LABELS[status];
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.value = settings.kanbanColumns[status];
@@ -748,21 +742,11 @@ function buildSettingsPanel(panel: HTMLElement): void {
 
   // フォントサイズ
   const fontSection = createSettingsSection('フォントサイズ');
-  const fontRow = document.createElement('div');
-  fontRow.className = 'settings-row';
-  for (const [sz, label] of [['sm', 'S 小'], ['md', 'M 中'], ['lg', 'L 大']] as [UserSettings['fontSize'], string][]) {
-    const btn = document.createElement('button');
-    btn.className = `settings-choice${settings.fontSize === sz ? ' active' : ''}`;
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      settings.fontSize = sz;
-      saveSettings();
-      applySettings();
-      buildSettingsPanel(panel);
-    });
-    fontRow.append(btn);
-  }
-  fontSection.append(fontRow);
+  fontSection.append(createSettingsChoices(
+    [['sm', 'S 小'], ['md', 'M 中'], ['lg', 'L 大']] as [UserSettings['fontSize'], string][],
+    settings.fontSize,
+    (sz) => { settings.fontSize = sz; saveSettings(); applySettings(); buildSettingsPanel(panel); }
+  ));
   panel.append(fontSection);
 }
 
@@ -774,6 +758,73 @@ function createSettingsSection(title: string): HTMLElement {
   h.textContent = title;
   section.append(h);
   return section;
+}
+
+function createSettingsChoices<T extends string>(
+  options: [T, string][],
+  current: T,
+  onChange: (val: T) => void
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+  for (const [val, label] of options) {
+    const btn = document.createElement('button');
+    btn.className = `settings-choice${current === val ? ' active' : ''}`;
+    btn.textContent = label;
+    btn.addEventListener('click', () => onChange(val));
+    row.append(btn);
+  }
+  return row;
+}
+
+// ========================
+// 共通UIビルダー
+// ========================
+
+const GCAL_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+  '<path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
+  'M5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
+
+function mkPriorityBadge(todo: DecryptedTodo, clickable: boolean): HTMLElement {
+  const priority = todo.priority ?? 'medium';
+  const el = document.createElement(clickable ? 'button' : 'span');
+  el.className = `todo-priority priority-${priority}`;
+  el.textContent = PRIORITY_LABEL[priority];
+  if (clickable) {
+    el.title = PRIORITY_TITLE[priority];
+    el.addEventListener('click', () => { void cyclePriority(todo.id, priority); });
+  }
+  return el;
+}
+
+function mkGCalBtn(todo: DecryptedTodo): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'todo-gcal-btn';
+  btn.title = 'Google Calendarに追加';
+  btn.setAttribute('aria-label', 'Google Calendarに追加');
+  btn.innerHTML = GCAL_SVG;
+  btn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
+  return btn;
+}
+
+function mkNotesBtn(todo: DecryptedTodo, container: HTMLElement): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
+  btn.title = todo.notes ? 'メモを編集' : 'メモを追加';
+  btn.setAttribute('aria-label', btn.title);
+  btn.textContent = '📝';
+  btn.addEventListener('click', () => toggleNotesPanel(todo.id, container, todo.notes));
+  return btn;
+}
+
+function mkDeleteBtn(todo: DecryptedTodo): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'btn-danger';
+  btn.title = '削除';
+  btn.textContent = '×';
+  btn.addEventListener('click', () => { void deleteTodo(todo.id); });
+  return btn;
 }
 
 // ========================
@@ -835,14 +886,8 @@ function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
   card.dataset.id = todo.id;
   card.draggable = true;
 
-  // ヘッダー行: 優先度 + タイトル
   const cardHeader = document.createElement('div');
   cardHeader.className = 'kanban-card-header';
-
-  const priority = todo.priority ?? 'medium';
-  const pBadge = document.createElement('span');
-  pBadge.className = `todo-priority priority-${priority}`;
-  pBadge.textContent = PRIORITY_LABEL[priority];
 
   const titleEl = document.createElement('span');
   titleEl.className = 'kanban-card-title';
@@ -850,40 +895,21 @@ function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
   titleEl.title = 'ダブルクリックで編集';
   titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
 
-  cardHeader.append(pBadge, titleEl);
+  cardHeader.append(mkPriorityBadge(todo, false), titleEl);
 
-  // フッター行: 期日 + GCal + メモ + 削除
   const cardFooter = document.createElement('div');
   cardFooter.className = 'kanban-card-footer';
 
   if (todo.dueDate) {
     const today = new Date().toISOString().slice(0, 10);
-    const isOverdue = todo.dueDate < today && !todo.completed;
+    const cls = todo.dueDate < today && !todo.completed ? ' overdue' : todo.dueDate === today ? ' today' : '';
     const badge = document.createElement('span');
-    badge.className = `todo-due-date${isOverdue ? ' overdue' : todo.dueDate === today ? ' today' : ''}`;
+    badge.className = `todo-due-date${cls}`;
     badge.textContent = formatDueDate(todo.dueDate);
     cardFooter.append(badge);
   }
 
-  const gcalBtn = document.createElement('button');
-  gcalBtn.className = 'todo-gcal-btn';
-  gcalBtn.title = 'Google Calendarに追加';
-  gcalBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
-  gcalBtn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
-
-  const notesBtn = document.createElement('button');
-  notesBtn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
-  notesBtn.title = todo.notes ? 'メモを編集' : 'メモを追加';
-  notesBtn.textContent = '📝';
-  notesBtn.addEventListener('click', () => toggleNotesPanel(todo.id, card, todo.notes));
-
-  const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'btn-danger';
-  deleteBtn.title = '削除';
-  deleteBtn.textContent = '×';
-  deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
-
-  cardFooter.append(gcalBtn, notesBtn, deleteBtn);
+  cardFooter.append(mkGCalBtn(todo), mkNotesBtn(todo, card), mkDeleteBtn(todo));
   card.append(cardHeader, cardFooter);
   return card;
 }
@@ -930,23 +956,8 @@ function setupKanbanDnD(board: HTMLElement): void {
 }
 
 async function moveToKanbanColumn(id: string, newStatus: KanbanStatus): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
   try {
-    const data = await decryptTodo(todo.encrypted_data, todo.iv);
-    const newData: TodoData = {
-      ...data,
-      status: newStatus,
-      completed: newStatus === 'done',
-    };
-    const { encrypted_data, iv } = await encryptTodo(newData);
-    const res = await fetch(`/api/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted_data, iv }),
-    });
-    if (!res.ok) throw new Error('移動に失敗しましたわ');
-    await loadTodos();
+    await patchTodo(id, { status: newStatus, completed: newStatus === 'done' });
   } catch (err: unknown) {
     alert((err as Error).message);
   }
@@ -1242,14 +1253,6 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   checkbox.textContent = todo.completed ? '✓' : '';
   checkbox.addEventListener('click', () => { void toggleTodo(todo.id, !todo.completed); });
 
-  // 優先度バッジ
-  const priority = todo.priority ?? 'medium';
-  const priorityBtn = document.createElement('button');
-  priorityBtn.className = `todo-priority priority-${priority}`;
-  priorityBtn.title = PRIORITY_TITLE[priority];
-  priorityBtn.textContent = PRIORITY_LABEL[priority];
-  priorityBtn.addEventListener('click', () => { void cyclePriority(todo.id, priority); });
-
   // タイトル
   const titleEl = document.createElement('span');
   titleEl.className = 'todo-title';
@@ -1257,36 +1260,8 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   titleEl.title = 'ダブルクリックで編集';
   titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
 
-  // 期日バッジ
-  const dueDateEl = createDueDateElement(todo);
-
-  // Google Calendarボタン
-  const gcalBtn = document.createElement('button');
-  gcalBtn.className = 'todo-gcal-btn';
-  gcalBtn.title = 'Google Calendarに追加';
-  gcalBtn.setAttribute('aria-label', 'Google Calendarに追加');
-  gcalBtn.innerHTML =
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-    '<path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
-    'M5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
-  gcalBtn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
-
-  // メモボタン
-  const notesBtn = document.createElement('button');
-  notesBtn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
-  notesBtn.title = todo.notes ? 'メモを編集' : 'メモを追加';
-  notesBtn.setAttribute('aria-label', todo.notes ? 'メモを編集' : 'メモを追加');
-  notesBtn.textContent = '📝';
-  notesBtn.addEventListener('click', () => toggleNotesPanel(todo.id, wrapper, todo.notes));
-
-  // 削除ボタン
-  const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'btn-danger';
-  deleteBtn.title = '削除';
-  deleteBtn.textContent = '×';
-  deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
-
-  item.append(dragHandle, checkbox, priorityBtn, titleEl, dueDateEl, gcalBtn, notesBtn, deleteBtn);
+  item.append(dragHandle, checkbox, mkPriorityBadge(todo, true), titleEl,
+    createDueDateElement(todo), mkGCalBtn(todo), mkNotesBtn(todo, wrapper), mkDeleteBtn(todo));
   wrapper.append(item);
   return wrapper;
 }
@@ -1345,39 +1320,11 @@ async function addTodo(): Promise<void> {
 }
 
 async function toggleTodo(id: string, completed: boolean): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
-  try {
-    const data = await decryptTodo(todo.encrypted_data, todo.iv);
-    const { encrypted_data, iv } = await encryptTodo({ ...data, completed });
-    const res = await fetch(`/api/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted_data, iv }),
-    });
-    if (!res.ok) throw new Error('更新に失敗しましたわ');
-    await loadTodos();
-  } catch (err: unknown) {
-    alert((err as Error).message);
-  }
+  try { await patchTodo(id, { completed }); } catch (err: unknown) { alert((err as Error).message); }
 }
 
 async function cyclePriority(id: string, current: Priority): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
-  try {
-    const data = await decryptTodo(todo.encrypted_data, todo.iv);
-    const { encrypted_data, iv } = await encryptTodo({ ...data, priority: PRIORITY_NEXT[current] });
-    const res = await fetch(`/api/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted_data, iv }),
-    });
-    if (!res.ok) throw new Error('更新に失敗しましたわ');
-    await loadTodos();
-  } catch (err: unknown) {
-    alert((err as Error).message);
-  }
+  try { await patchTodo(id, { priority: PRIORITY_NEXT[current] }); } catch (err: unknown) { alert((err as Error).message); }
 }
 
 async function deleteTodo(id: string): Promise<void> {
@@ -1441,17 +1388,7 @@ function startEditTodo(id: string, currentTitle: string): void {
 }
 
 async function updateTodoTitle(id: string, newTitle: string): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
-  const data = await decryptTodo(todo.encrypted_data, todo.iv);
-  const { encrypted_data, iv } = await encryptTodo({ ...data, title: newTitle });
-  const res = await fetch(`/api/todos/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ encrypted_data, iv }),
-  });
-  if (!res.ok) throw new Error('更新に失敗しましたわ');
-  await loadTodos();
+  await patchTodo(id, { title: newTitle });
 }
 
 // ========================
