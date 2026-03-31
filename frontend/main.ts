@@ -390,7 +390,10 @@ async function loadTodos(): Promise<void> {
 
     renderTodos(decryptedCache);
   } catch (err: unknown) {
-    listEl.innerHTML = `<div class="message error show">${escapeHtml((err as Error).message)}</div>`;
+    const errEl = document.createElement('div');
+    errEl.className = 'message error show';
+    errEl.textContent = (err as Error).message;
+    listEl.replaceChildren(errEl);
   }
 }
 
@@ -400,51 +403,64 @@ function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
   return todos;
 }
 
+const EMPTY_MESSAGES: Record<Filter, string> = {
+  active: '未完了のTODOはありませんわ！',
+  completed: '完了済みのTODOはありませんわ',
+  all: 'TODOがありませんわ。追加してみてくださいませ！',
+};
+
+function renderTodoItem(todo: DecryptedTodo): HTMLElement {
+  const item = document.createElement('div');
+  item.className = `todo-item${todo.completed ? ' completed' : ''}`;
+  item.dataset.id = todo.id;
+
+  const checkbox = document.createElement('button');
+  checkbox.className = 'todo-checkbox';
+  checkbox.title = todo.completed ? '未完了に戻す' : '完了にする';
+  checkbox.textContent = todo.completed ? '✓' : '';
+  checkbox.addEventListener('click', () => { void toggleTodo(todo.id, !todo.completed); });
+
+  const titleEl = document.createElement('span');
+  titleEl.className = 'todo-title';
+  titleEl.textContent = todo.title;
+  titleEl.title = 'ダブルクリックで編集';
+  titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn-danger';
+  deleteBtn.title = '削除';
+  deleteBtn.textContent = '×';
+  deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
+
+  item.append(checkbox, titleEl, deleteBtn);
+  return item;
+}
+
 function renderTodos(todos: DecryptedTodo[]): void {
   const listEl = document.getElementById('todo-list')!;
   const countEl = document.getElementById('todo-count')!;
   const clearWrap = document.getElementById('clear-completed-wrap')!;
 
-  const total = todos.length;
   const done = todos.filter((t) => t.completed).length;
-  const hasCompleted = done > 0;
-
-  countEl.textContent = total === 0 ? '' : `${done} / ${total} 完了`;
-  clearWrap.style.display = hasCompleted ? '' : 'none';
+  countEl.textContent = todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
+  clearWrap.style.display = done > 0 ? '' : 'none';
 
   const filtered = applyFilter(todos);
 
   if (filtered.length === 0) {
-    const emptyMsg = currentFilter === 'active'
-      ? '未完了のTODOはありませんわ！'
-      : currentFilter === 'completed'
-      ? '完了済みのTODOはありませんわ'
-      : 'TODOがありませんわ。追加してみてくださいませ！';
-
-    listEl.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📝</div>
-        <p>${emptyMsg}</p>
-      </div>`;
+    const icon = document.createElement('div');
+    icon.className = 'empty-icon';
+    icon.textContent = '📝';
+    const msg = document.createElement('p');
+    msg.textContent = EMPTY_MESSAGES[currentFilter];
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.append(icon, msg);
+    listEl.replaceChildren(empty);
     return;
   }
 
-  listEl.innerHTML = filtered
-    .map(
-      (todo) => `
-    <div class="todo-item ${todo.completed ? 'completed' : ''}" data-id="${todo.id}">
-      <button class="todo-checkbox"
-        onclick="window.__toggleTodo('${todo.id}', ${!todo.completed})"
-        title="${todo.completed ? '未完了に戻す' : '完了にする'}"
-      >${todo.completed ? '✓' : ''}</button>
-      <span class="todo-title"
-        ondblclick="window.__editTodo('${todo.id}', '${escapeAttr(todo.title)}')"
-        title="ダブルクリックで編集"
-      >${escapeHtml(todo.title)}</span>
-      <button class="btn-danger" onclick="window.__deleteTodo('${todo.id}')" title="削除">×</button>
-    </div>`
-    )
-    .join('');
+  listEl.replaceChildren(...filtered.map(renderTodoItem));
 }
 
 async function addTodo(): Promise<void> {
@@ -638,19 +654,6 @@ function clearMessage(id: string): void {
   el.className = 'message';
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/** onclick属性値用エスケープ（シングルクォート・バックスラッシュ） */
-function escapeAttr(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
 // ========================
 // Base64 / ArrayBuffer 変換
 // ========================
@@ -681,9 +684,6 @@ function base64urlToBuffer(b64url: string): ArrayBuffer {
 
 declare global {
   interface Window {
-    __toggleTodo: (id: string, completed: boolean) => void;
-    __deleteTodo: (id: string) => void;
-    __editTodo: (id: string, currentTitle: string) => void;
     switchTab: (tab: 'login' | 'register') => void;
     loginHandler: () => void;
     registerHandler: () => void;
@@ -703,9 +703,6 @@ window.loginHandler = doLogin;
 window.registerHandler = doRegister;
 window.unlockHandler = doUnlock;
 window.addTodoHandler = addTodo;
-window.__toggleTodo = toggleTodo;
-window.__deleteTodo = deleteTodo;
-window.__editTodo = startEditTodo;
 window.setFilter = setFilter;
 window.clearCompletedHandler = clearCompleted;
 window.showAuthFromLP = showAuthCard;
