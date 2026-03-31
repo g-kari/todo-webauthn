@@ -39,18 +39,39 @@ interface EncryptedTodo {
 }
 
 type Priority = 'high' | 'medium' | 'low';
+type KanbanStatus = 'todo' | 'doing' | 'done';
+type ViewMode = 'list' | 'kanban';
 
 interface TodoData {
   title: string;
   completed: boolean;
   priority?: Priority;
-  dueDate?: string; // "YYYY-MM-DD"
-  notes?: string;   // Lexical editor state JSON string
+  dueDate?: string;        // "YYYY-MM-DD"
+  notes?: string;          // Lexical editor state JSON string
+  status?: KanbanStatus;   // カンバン列
 }
 
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
 
 type Filter = 'all' | 'active' | 'completed';
+
+interface UserSettings {
+  view: ViewMode;
+  kanbanColumns: Record<KanbanStatus, string>;
+  accentColor: string;
+  fontSize: 'sm' | 'md' | 'lg';
+}
+
+const DEFAULT_SETTINGS: UserSettings = {
+  view: 'list',
+  kanbanColumns: { todo: '未着手', doing: '進行中', done: '完了' },
+  accentColor: '#73862d',
+  fontSize: 'md',
+};
+
+const ACCENT_PRESETS = ['#73862d', '#2d6886', '#862d3c', '#6b4c86', '#86632d', '#2d7055'] as const;
+const FONT_SIZE_MAP: Record<UserSettings['fontSize'], string> = { sm: '14px', md: '16px', lg: '18px' };
+const KANBAN_ORDER: KanbanStatus[] = ['todo', 'doing', 'done'];
 
 const PRIORITY_LABEL: Record<Priority, string> = { high: '高', medium: '中', low: '低' };
 const PRIORITY_NEXT: Record<Priority, Priority> = { high: 'medium', medium: 'low', low: 'high' };
@@ -77,6 +98,10 @@ const openEditors = new Map<string, { editor: LexicalEditor; cleanup: (() => voi
 let draggedId: string | null = null;
 let dragOverId: string | null = null;
 
+/** ユーザー設定 */
+let settings: UserSettings = { ...DEFAULT_SETTINGS };
+let currentView: ViewMode = 'list';
+
 // ========================
 // 起動処理
 // ========================
@@ -86,6 +111,9 @@ async function init(): Promise<void> {
     alert('このブラウザはWebAuthnをサポートしていませんわ');
     return;
   }
+
+  loadSettings();
+  applySettings();
 
   try {
     const res = await fetch('/api/auth/me');
@@ -595,6 +623,336 @@ function openGCalLink(title: string, dueDate: string | undefined): void {
 }
 
 // ========================
+// ユーザー設定
+// ========================
+
+const SETTINGS_KEY = 'wa-todo-settings';
+
+function loadSettings(): void {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) as Partial<UserSettings> };
+      settings.kanbanColumns = { ...DEFAULT_SETTINGS.kanbanColumns, ...settings.kanbanColumns };
+    }
+  } catch {
+    settings = { ...DEFAULT_SETTINGS };
+  }
+  currentView = settings.view;
+}
+
+function saveSettings(): void {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function applySettings(): void {
+  const root = document.documentElement;
+  root.style.setProperty('--color-accent', settings.accentColor);
+  root.style.setProperty('--font-size-base', FONT_SIZE_MAP[settings.fontSize]);
+  // ビュー切り替えボタンの状態更新
+  document.getElementById('view-list')?.classList.toggle('active', currentView === 'list');
+  document.getElementById('view-kanban')?.classList.toggle('active', currentView === 'kanban');
+}
+
+function setView(view: ViewMode): void {
+  currentView = view;
+  settings.view = view;
+  saveSettings();
+  applySettings();
+  renderTodos(decryptedCache);
+}
+
+function toggleSettingsPanel(): void {
+  const panel = document.getElementById('settings-panel')!;
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  buildSettingsPanel(panel);
+}
+
+function buildSettingsPanel(panel: HTMLElement): void {
+  panel.replaceChildren();
+
+  const header = document.createElement('div');
+  header.className = 'settings-header';
+  const title = document.createElement('span');
+  title.textContent = '設定';
+  title.className = 'settings-title';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'settings-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+  header.append(title, closeBtn);
+  panel.append(header);
+
+  // 表示モード
+  const viewSection = createSettingsSection('表示モード');
+  const viewBtns = document.createElement('div');
+  viewBtns.className = 'settings-row';
+  for (const [v, label] of [['list', '☰ リスト'], ['kanban', '⬛ カンバン']] as const) {
+    const btn = document.createElement('button');
+    btn.className = `settings-choice${currentView === v ? ' active' : ''}`;
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      setView(v);
+      buildSettingsPanel(panel);
+    });
+    viewBtns.append(btn);
+  }
+  viewSection.append(viewBtns);
+  panel.append(viewSection);
+
+  // カンバン列名
+  const colSection = createSettingsSection('カンバン列名');
+  for (const status of KANBAN_ORDER) {
+    const row = document.createElement('div');
+    row.className = 'settings-input-row';
+    const lbl = document.createElement('label');
+    lbl.className = 'settings-label';
+    lbl.textContent = { todo: '未着手', doing: '進行中', done: '完了' }[status];
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = settings.kanbanColumns[status];
+    inp.className = 'settings-input';
+    inp.addEventListener('change', () => {
+      settings.kanbanColumns[status] = inp.value.trim() || DEFAULT_SETTINGS.kanbanColumns[status];
+      saveSettings();
+      if (currentView === 'kanban') renderTodos(decryptedCache);
+    });
+    row.append(lbl, inp);
+    colSection.append(row);
+  }
+  panel.append(colSection);
+
+  // アクセントカラー
+  const colorSection = createSettingsSection('アクセントカラー');
+  const colorRow = document.createElement('div');
+  colorRow.className = 'settings-row settings-colors';
+  for (const color of ACCENT_PRESETS) {
+    const swatch = document.createElement('button');
+    swatch.className = `color-swatch${settings.accentColor === color ? ' active' : ''}`;
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.addEventListener('click', () => {
+      settings.accentColor = color;
+      saveSettings();
+      applySettings();
+      buildSettingsPanel(panel);
+    });
+    colorRow.append(swatch);
+  }
+  colorSection.append(colorRow);
+  panel.append(colorSection);
+
+  // フォントサイズ
+  const fontSection = createSettingsSection('フォントサイズ');
+  const fontRow = document.createElement('div');
+  fontRow.className = 'settings-row';
+  for (const [sz, label] of [['sm', 'S 小'], ['md', 'M 中'], ['lg', 'L 大']] as [UserSettings['fontSize'], string][]) {
+    const btn = document.createElement('button');
+    btn.className = `settings-choice${settings.fontSize === sz ? ' active' : ''}`;
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      settings.fontSize = sz;
+      saveSettings();
+      applySettings();
+      buildSettingsPanel(panel);
+    });
+    fontRow.append(btn);
+  }
+  fontSection.append(fontRow);
+  panel.append(fontSection);
+}
+
+function createSettingsSection(title: string): HTMLElement {
+  const section = document.createElement('div');
+  section.className = 'settings-section';
+  const h = document.createElement('div');
+  h.className = 'settings-section-title';
+  h.textContent = title;
+  section.append(h);
+  return section;
+}
+
+// ========================
+// カンバン
+// ========================
+
+function getEffectiveStatus(todo: DecryptedTodo): KanbanStatus {
+  if (todo.status) return todo.status;
+  return todo.completed ? 'done' : 'todo';
+}
+
+function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
+  container.className = 'kanban-board';
+
+  const columns = KANBAN_ORDER.map((status) => {
+    const col = document.createElement('div');
+    col.className = 'kanban-col';
+    col.dataset.status = status;
+
+    const header = document.createElement('div');
+    header.className = 'kanban-col-header';
+    const nameEl = document.createElement('span');
+    nameEl.textContent = settings.kanbanColumns[status];
+    const countEl = document.createElement('span');
+    const colTodos = todos.filter((t) => getEffectiveStatus(t) === status);
+    countEl.textContent = String(colTodos.length);
+    countEl.className = 'kanban-col-count';
+    header.append(nameEl, countEl);
+
+    const body = document.createElement('div');
+    body.className = 'kanban-col-body';
+    body.dataset.status = status;
+
+    colTodos.forEach((todo) => body.append(renderKanbanCard(todo)));
+
+    // + 追加ボタン（未着手列のみ）
+    if (status === 'todo') {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'kanban-add-btn';
+      addBtn.textContent = '+ TODO追加';
+      addBtn.addEventListener('click', () => {
+        document.getElementById('new-todo-input')?.focus();
+        document.getElementById('todo-section')?.scrollIntoView({ behavior: 'smooth' });
+      });
+      body.append(addBtn);
+    }
+
+    col.append(header, body);
+    return col;
+  });
+
+  container.replaceChildren(...columns);
+  setupKanbanDnD(container);
+}
+
+function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'kanban-card';
+  card.dataset.id = todo.id;
+  card.draggable = true;
+
+  // ヘッダー行: 優先度 + タイトル
+  const cardHeader = document.createElement('div');
+  cardHeader.className = 'kanban-card-header';
+
+  const priority = todo.priority ?? 'medium';
+  const pBadge = document.createElement('span');
+  pBadge.className = `todo-priority priority-${priority}`;
+  pBadge.textContent = PRIORITY_LABEL[priority];
+
+  const titleEl = document.createElement('span');
+  titleEl.className = 'kanban-card-title';
+  titleEl.textContent = todo.title;
+  titleEl.title = 'ダブルクリックで編集';
+  titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
+
+  cardHeader.append(pBadge, titleEl);
+
+  // フッター行: 期日 + GCal + メモ + 削除
+  const cardFooter = document.createElement('div');
+  cardFooter.className = 'kanban-card-footer';
+
+  if (todo.dueDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    const isOverdue = todo.dueDate < today && !todo.completed;
+    const badge = document.createElement('span');
+    badge.className = `todo-due-date${isOverdue ? ' overdue' : todo.dueDate === today ? ' today' : ''}`;
+    badge.textContent = formatDueDate(todo.dueDate);
+    cardFooter.append(badge);
+  }
+
+  const gcalBtn = document.createElement('button');
+  gcalBtn.className = 'todo-gcal-btn';
+  gcalBtn.title = 'Google Calendarに追加';
+  gcalBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19V8h14v11H5zm2-9h5v5H7z"/></svg>';
+  gcalBtn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
+
+  const notesBtn = document.createElement('button');
+  notesBtn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
+  notesBtn.title = todo.notes ? 'メモを編集' : 'メモを追加';
+  notesBtn.textContent = '📝';
+  notesBtn.addEventListener('click', () => toggleNotesPanel(todo.id, card, todo.notes));
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn-danger';
+  deleteBtn.title = '削除';
+  deleteBtn.textContent = '×';
+  deleteBtn.addEventListener('click', () => { void deleteTodo(todo.id); });
+
+  cardFooter.append(gcalBtn, notesBtn, deleteBtn);
+  card.append(cardHeader, cardFooter);
+  return card;
+}
+
+let kanbanDraggedId: string | null = null;
+
+function setupKanbanDnD(board: HTMLElement): void {
+  board.addEventListener('dragstart', (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.kanban-card');
+    if (!card) return;
+    kanbanDraggedId = card.dataset.id ?? null;
+    card.classList.add('dragging');
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  });
+
+  board.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
+    if (!col) return;
+    board.querySelectorAll('.kanban-col-body.drag-over').forEach((el) => el.classList.remove('drag-over'));
+    col.classList.add('drag-over');
+  });
+
+  board.addEventListener('dragleave', (e) => {
+    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
+    if (col && !col.contains(e.relatedTarget as Node)) col.classList.remove('drag-over');
+  });
+
+  board.addEventListener('drop', (e) => {
+    e.preventDefault();
+    board.querySelectorAll('.dragging, .drag-over').forEach((el) => el.classList.remove('dragging', 'drag-over'));
+    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
+    const newStatus = col?.dataset.status as KanbanStatus | undefined;
+    const id = kanbanDraggedId;
+    kanbanDraggedId = null;
+    if (!id || !newStatus) return;
+    void moveToKanbanColumn(id, newStatus);
+  });
+
+  board.addEventListener('dragend', () => {
+    board.querySelectorAll('.dragging, .drag-over').forEach((el) => el.classList.remove('dragging', 'drag-over'));
+    kanbanDraggedId = null;
+  });
+}
+
+async function moveToKanbanColumn(id: string, newStatus: KanbanStatus): Promise<void> {
+  const todo = todosCache.find((t) => t.id === id);
+  if (!todo) return;
+  try {
+    const data = await decryptTodo(todo.encrypted_data, todo.iv);
+    const newData: TodoData = {
+      ...data,
+      status: newStatus,
+      completed: newStatus === 'done',
+    };
+    const { encrypted_data, iv } = await encryptTodo(newData);
+    const res = await fetch(`/api/todos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted_data, iv }),
+    });
+    if (!res.ok) throw new Error('移動に失敗しましたわ');
+    await loadTodos();
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
+}
+
+// ========================
 // Lexicalメモエディタ
 // ========================
 
@@ -940,7 +1298,12 @@ function renderTodos(todos: DecryptedTodo[]): void {
 
   const done = todos.filter((t) => t.completed).length;
   countEl.textContent = todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
-  clearWrap.style.display = done > 0 ? '' : 'none';
+  clearWrap.style.display = done > 0 && currentView === 'list' ? '' : 'none';
+
+  if (currentView === 'kanban') {
+    renderKanban(todos, listEl);
+    return;
+  }
 
   const filtered = applyFilter(todos);
 
@@ -1212,6 +1575,8 @@ declare global {
     showLP: () => void;
     showPrivacyPolicy: (e?: Event) => void;
     hidePrivacyPolicy: (e?: Event) => void;
+    setView: (view: ViewMode) => void;
+    toggleSettingsPanel: () => void;
   }
 }
 
@@ -1226,6 +1591,8 @@ window.showAuthFromLP = showAuthCard;
 window.showLP = showLP;
 window.showPrivacyPolicy = showPrivacyPolicy;
 window.hidePrivacyPolicy = hidePrivacyPolicy;
+window.setView = setView;
+window.toggleSettingsPanel = toggleSettingsPanel;
 
 // ========================
 // Service Worker 登録
