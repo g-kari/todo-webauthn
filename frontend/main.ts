@@ -601,7 +601,7 @@ function createDueDateElement(todo: DecryptedTodo): HTMLElement {
   container.className = "todo-date-wrap";
 
   if (todo.dueDate) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateString(new Date());
     const isOverdue = todo.dueDate < today && !todo.completed;
     const isToday = todo.dueDate === today;
 
@@ -653,6 +653,9 @@ function showDueDatePicker(
   const todayYear = now.getFullYear();
   const todayMonth = now.getMonth(); // 0-indexed
   const todayDay = now.getDate();
+  const tomorrowDate = new Date(now);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = localDateString(tomorrowDate);
 
   // 表示する月の状態
   let viewYear: number;
@@ -807,9 +810,6 @@ function showDueDatePicker(
       selectDate(todayStr);
     });
 
-    const tomorrowDate = new Date(now);
-    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-    const tomorrowStr = localDateString(tomorrowDate);
     const tomorrowBtn = document.createElement("button");
     tomorrowBtn.className = "btn-ghost btn-sm";
     tomorrowBtn.textContent = "明日";
@@ -1204,7 +1204,7 @@ function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
   cardFooter.className = "kanban-card-footer";
 
   if (todo.dueDate) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateString(new Date());
     const cls =
       todo.dueDate < today && !todo.completed ? " overdue" : todo.dueDate === today ? " today" : "";
     const badge = document.createElement("span");
@@ -1878,7 +1878,7 @@ function renderTodos(todos: DecryptedTodo[]): void {
 
   // 差分更新: 既存の .todo-wrapper を再利用してノートパネルを保持する
   const existingWrappers = new Map<string, HTMLElement>();
-  for (const child of Array.from(listEl.children)) {
+  for (const child of listEl.children) {
     const el = child as HTMLElement;
     if (el.dataset.id) existingWrappers.set(el.dataset.id, el);
   }

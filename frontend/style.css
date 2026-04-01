@@ -12,6 +12,8 @@
   --color-surface: #f2f0f0;
   --color-accent: #73862d;
   --color-danger: #ff340b;
+  --color-sunday: #e05252;
+  --color-saturday: #4a90d9;
   --font-size-base: 16px; /* ユーザー設定で上書き */
 
   /* フォント */
@@ -1500,11 +1502,11 @@ input::placeholder {
 }
 
 .ddc-wd-cell--sun {
-  color: #e05252;
+  color: var(--color-sunday);
 }
 
 .ddc-wd-cell--sat {
-  color: #4a90d9;
+  color: var(--color-saturday);
 }
 
 /* 日グリッド */
@@ -1540,11 +1542,11 @@ input::placeholder {
 
 /* 日曜・土曜の色 */
 .ddc-day--sun {
-  color: #e05252;
+  color: var(--color-sunday);
 }
 
 .ddc-day--sat {
-  color: #4a90d9;
+  color: var(--color-saturday);
 }
 
 /* 前後の月の日 */
