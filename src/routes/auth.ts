@@ -13,6 +13,7 @@ import type {
 import type { Bindings } from '../index';
 import { createJwt, requireAuth } from '../middleware/auth';
 import { createDb } from '../db/index';
+import { generateId, generateBase64URLId } from '../utils';
 
 type Variables = {
   userId: string;
@@ -20,22 +21,6 @@ type Variables = {
 };
 
 const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-
-function generateId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function generateBase64URLId(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  let str = '';
-  for (const byte of bytes) str += String.fromCharCode(byte);
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
 
 // ========================
 // 登録: オプション生成
