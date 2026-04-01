@@ -1430,7 +1430,7 @@ input::placeholder {
 
 /* ===== 期日ピッカーポップアップ ===== */
 .due-date-picker-popup {
-  position: absolute;
+  position: fixed;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1487,6 +1487,7 @@ input::placeholder {
 }
 
 /* ===== メモボタン ===== */
+.todo-edit-btn,
 .todo-notes-btn {
   width: 26px;
   height: 26px;
@@ -1504,15 +1505,25 @@ input::placeholder {
   flex-shrink: 0;
 }
 
+.todo-item:hover .todo-edit-btn,
 .todo-item:hover .todo-notes-btn {
   opacity: 1;
 }
 .todo-notes-btn.has-notes {
   opacity: 0.7;
 }
+.todo-edit-btn:hover,
 .todo-notes-btn:hover {
   background: var(--color-surface);
   opacity: 1;
+}
+
+/* タッチデバイスでは常時表示 */
+@media (hover: none) {
+  .todo-edit-btn,
+  .todo-notes-btn {
+    opacity: 0.6;
+  }
 }
 
 /* ===== メモパネル（Lexical） ===== */
@@ -1577,12 +1588,15 @@ input::placeholder {
   min-height: 120px;
   max-height: 320px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 12px 14px;
   outline: none;
   font-family: var(--font);
   font-size: 0.875rem;
   color: var(--color-text);
   line-height: 1.7;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .lexical-editor:focus-within {

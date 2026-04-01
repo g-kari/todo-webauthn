@@ -671,15 +671,23 @@ function showDueDatePicker(
   document.body.append(popup);
 
   const rect = anchor.getBoundingClientRect();
+  const popupW = 200;
   const popupH = 90;
   const spaceBelow = window.innerHeight - rect.bottom;
-  const top =
-    spaceBelow > popupH ? rect.bottom + window.scrollY + 4 : rect.top + window.scrollY - popupH - 4;
+  // position:fixed なので scrollY/X は不要
+  const top = spaceBelow > popupH ? rect.bottom + 4 : rect.top - popupH - 4;
+  const left = Math.min(Math.max(4, rect.left), window.innerWidth - popupW - 4);
   popup.style.top = `${top}px`;
-  popup.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 200)}px`;
+  popup.style.left = `${left}px`;
+  popup.style.width = `${popupW}px`;
 
   setTimeout(() => {
-    input.focus();
+    // モバイルではネイティブpickerが開くので showPicker() を試みる
+    try {
+      (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+    } catch {
+      input.focus();
+    }
     closeHandler = (e: MouseEvent): void => {
       if (!popup.contains(e.target as Node)) dismissPopup();
     };
@@ -1317,11 +1325,16 @@ function openNotesPanel(
   }
 
   // ツールバーボタンをエディタと接続
+  // mousedown + touchend 両対応（touchstart だと focus 消失するため touchend を使う）
   for (let i = 0; i < toolbarDefs.length; i++) {
     const def = toolbarDefs[i];
     const btn = toolbarBtnEls[i];
     btn.addEventListener("mousedown", (e) => {
       e.preventDefault(); // エディタのfocusを維持
+      def.action(editor);
+    });
+    btn.addEventListener("touchend", (e) => {
+      e.preventDefault(); // スクロール誤動作防止
       def.action(editor);
     });
   }
@@ -1596,14 +1609,21 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
   const titleEl = document.createElement("span");
   titleEl.className = "todo-title";
   titleEl.textContent = todo.title;
-  titleEl.title = "ダブルクリックで編集";
   titleEl.addEventListener("dblclick", () => startEditTodo(todo.id, todo.title));
+
+  const editBtn = document.createElement("button");
+  editBtn.className = "todo-edit-btn";
+  editBtn.title = "編集";
+  editBtn.setAttribute("aria-label", "編集");
+  editBtn.textContent = "✏️";
+  editBtn.addEventListener("click", () => startEditTodo(todo.id, todo.title));
 
   item.append(
     dragHandle,
     checkbox,
     mkPriorityBadge(todo, true),
     titleEl,
+    editBtn,
     createDueDateElement(todo),
     mkGCalBtn(todo),
     mkNotesBtn(todo, wrapper),
