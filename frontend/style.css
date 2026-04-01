@@ -91,8 +91,6 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: nowrap;
-  overflow: hidden;
 }
 
 .logo {
@@ -104,6 +102,7 @@ button {
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: var(--transition);
 }
 .logo:hover { opacity: 0.75; }
@@ -841,7 +840,7 @@ input::placeholder { color: var(--color-muted); }
 
 .search-bar:focus-within {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  box-shadow: 0 0 0 2px rgba(115, 134, 45, 0.2);
 }
 
 .search-icon {
