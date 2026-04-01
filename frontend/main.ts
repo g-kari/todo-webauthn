@@ -655,7 +655,6 @@ function showDueDatePicker(
   const clearBtn = document.createElement("button");
   clearBtn.className = "btn-ghost btn-sm";
   clearBtn.textContent = "期日を削除";
-  clearBtn.style.marginTop = "6px";
   clearBtn.addEventListener("click", () => {
     dismissPopup();
     void setDueDate(todoId, null);
@@ -1176,6 +1175,13 @@ function setupKanbanDnD(board: HTMLElement): void {
   board.addEventListener(
     "touchstart",
     (e) => {
+      // ノートパネル・編集UI内のタップはDnDを起動しない
+      if (
+        (e.target as HTMLElement).closest(
+          ".todo-notes-panel, .todo-edit-input, input, button, [contenteditable]",
+        )
+      )
+        return;
       const card = (e.target as HTMLElement).closest<HTMLElement>(".kanban-card");
       if (!card) return;
       touchKanbanId = card.dataset.id ?? null;
@@ -1331,6 +1337,10 @@ function openNotesPanel(
   });
 
   editor.setRootElement(editorEl);
+  // モバイルでタップ時にフォーカスを確実に取得する
+  editorEl.addEventListener("touchend", (e) => {
+    if (!(e.target as HTMLElement).closest("button")) editor.focus();
+  });
 
   const unregRich = registerRichText(editor);
   const unregHistory = registerHistory(editor, createEmptyHistoryState(), 300);
@@ -1556,6 +1566,7 @@ function setupTouchDnD(listEl: HTMLElement): void {
   listEl.addEventListener(
     "touchstart",
     (e) => {
+      if ((e.target as HTMLElement).closest(".todo-notes-panel, [contenteditable]")) return;
       const handle = (e.target as HTMLElement).closest(".drag-handle");
       if (!handle) return;
       const wrapper = handle.closest<HTMLElement>(".todo-wrapper");
