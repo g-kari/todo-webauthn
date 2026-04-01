@@ -488,26 +488,27 @@ function syncEncryptedCache(id: string, encrypted_data: string, iv: string): voi
   }
 }
 
-/** Todo を部分更新する（楽観的UI更新→バックグラウンド同期） */
-async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
+/** decrypt → encrypt → PUT → syncEncryptedCache の共通ヘルパー */
+async function encryptAndSave(id: string, patch: Partial<TodoData>): Promise<void> {
   const todo = todosCache.find((t) => t.id === id);
   if (!todo) return;
-
-  // 楽観的にキャッシュを更新して即座に再描画
-  const dec = decryptedCache.find((t) => t.id === id);
-  if (dec) Object.assign(dec, patch);
-  renderTodos(decryptedCache);
-
   const data = await decryptTodo(todo.encrypted_data, todo.iv);
   const { encrypted_data, iv } = await encryptTodo({ ...data, ...patch });
-  syncEncryptedCache(id, encrypted_data, iv);
-
   const res = await fetch(`/api/todos/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ encrypted_data, iv }),
   });
   if (!res.ok) throw new Error("更新に失敗しましたわ");
+  syncEncryptedCache(id, encrypted_data, iv);
+}
+
+/** Todo を部分更新する（楽観的UI更新→バックグラウンド同期） */
+async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
+  const dec = decryptedCache.find((t) => t.id === id);
+  if (dec) Object.assign(dec, patch);
+  renderTodos(decryptedCache);
+  await encryptAndSave(id, patch);
 }
 
 async function loadTodos(): Promise<void> {
@@ -1407,18 +1408,8 @@ function openNotesPanel(
 }
 
 async function saveNotes(id: string, notesJson: string): Promise<void> {
-  const todo = todosCache.find((t) => t.id === id);
-  if (!todo) return;
   try {
-    const data = await decryptTodo(todo.encrypted_data, todo.iv);
-    const { encrypted_data, iv } = await encryptTodo({ ...data, notes: notesJson });
-    const res = await fetch(`/api/todos/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ encrypted_data, iv }),
-    });
-    if (!res.ok) return;
-    syncEncryptedCache(id, encrypted_data, iv);
+    await encryptAndSave(id, { notes: notesJson });
     const dec = decryptedCache.find((t) => t.id === id);
     if (dec) dec.notes = notesJson;
   } catch (err) {
