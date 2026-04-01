@@ -19,7 +19,7 @@ todos.get("/", async (c) => {
 });
 
 const MAX_ENCRYPTED_LEN = 65536; // 64KB
-const IV_LEN = 24; // base64url(12 bytes)
+const IV_LEN = 16; // btoa(12 bytes) = 16文字
 
 todos.post("/", async (c) => {
   const { encrypted_data, iv } = await c.req.json<{ encrypted_data: string; iv: string }>();
