@@ -1472,8 +1472,10 @@ function openNotesPanel(
   toolbar.append(closeBtn);
 
   // エディタ領域
+  // Lexical は contenteditable を自動設定しないため明示的に指定する
   const editorEl = document.createElement("div");
   editorEl.className = "lexical-editor";
+  editorEl.contentEditable = "true";
   editorEl.setAttribute("spellcheck", "false");
 
   panel.append(toolbar, editorEl);
