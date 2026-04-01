@@ -1429,43 +1429,164 @@ input::placeholder {
 }
 
 /* ===== 期日ピッカーポップアップ ===== */
+/* ===== カスタム日付ピッカー ===== */
 .due-date-picker-popup {
   position: fixed;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 10px;
-  box-shadow: 0 8px 24px rgba(72, 48, 48, 0.12);
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  user-select: none;
 }
 
-.due-date-picker-popup input[type="date"] {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 8px 10px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-family: var(--font);
-  font-size: 0.875rem;
-  color: var(--color-text);
-  outline: none;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
+/* ヘッダー: ‹ 2025年4月 › */
+.ddc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
 
-.due-date-picker-popup input[type="date"]:focus {
-  border-color: var(--color-accent);
-}
-
-.due-date-picker-popup .btn-ghost {
-  box-sizing: border-box;
-  width: 100%;
+.ddc-month-label {
+  flex: 1;
   text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ddc-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.ddc-nav-btn:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+/* 曜日ヘッダー行 */
+.ddc-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.ddc-wd-cell {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 2px 0;
+}
+
+.ddc-wd-cell--sun {
+  color: #e05252;
+}
+
+.ddc-wd-cell--sat {
+  color: #4a90d9;
+}
+
+/* 日グリッド */
+.ddc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.ddc-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+  padding: 0;
+  line-height: 1;
+}
+
+.ddc-day:hover:not(.ddc-day--other):not(.ddc-day--selected) {
+  background: var(--color-border);
+}
+
+/* 日曜・土曜の色 */
+.ddc-day--sun {
+  color: #e05252;
+}
+
+.ddc-day--sat {
+  color: #4a90d9;
+}
+
+/* 前後の月の日 */
+.ddc-day--other {
+  color: var(--color-muted);
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* 今日 */
+.ddc-day--today {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 選択中 */
+.ddc-day--selected {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ddc-day--selected:hover {
+  background: var(--color-accent);
+  opacity: 0.88;
+}
+
+/* クイック選択ボタン行 */
+.ddc-quick-row {
+  display: flex;
+  gap: 4px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.ddc-quick-row .btn-ghost {
+  flex: 1;
+  text-align: center;
+  font-size: 0.75rem;
+  padding: 4px 2px;
 }
 
 /* ===== Google Calendarボタン ===== */

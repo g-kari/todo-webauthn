@@ -630,6 +630,13 @@ function createDueDateElement(todo: DecryptedTodo): HTMLElement {
   return container;
 }
 
+function localDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function showDueDatePicker(
   todoId: string,
   anchor: HTMLElement,
@@ -640,11 +647,27 @@ function showDueDatePicker(
   const popup = document.createElement("div");
   popup.className = "due-date-picker-popup";
 
-  const input = document.createElement("input");
-  input.type = "date";
-  input.value = currentDate ?? "";
+  // 今日の情報
+  const now = new Date();
+  const todayStr = localDateString(now);
+  const todayYear = now.getFullYear();
+  const todayMonth = now.getMonth(); // 0-indexed
+  const todayDay = now.getDate();
+
+  // 表示する月の状態
+  let viewYear: number;
+  let viewMonth: number; // 0-indexed
+  if (currentDate) {
+    const parts = currentDate.split("-").map(Number);
+    viewYear = parts[0]!;
+    viewMonth = parts[1]! - 1;
+  } else {
+    viewYear = todayYear;
+    viewMonth = todayMonth;
+  }
 
   let closeHandler: ((e: MouseEvent) => void) | null = null;
+
   function dismissPopup(): void {
     popup.remove();
     if (closeHandler) {
@@ -653,28 +676,169 @@ function showDueDatePicker(
     }
   }
 
-  const clearBtn = document.createElement("button");
-  clearBtn.className = "btn-ghost btn-sm";
-  clearBtn.textContent = "期日を削除";
-  clearBtn.addEventListener("click", () => {
+  function selectDate(dateStr: string): void {
     dismissPopup();
-    void setDueDate(todoId, null);
-  });
+    void setDueDate(todoId, dateStr);
+  }
 
-  input.addEventListener("change", () => {
-    const val = input.value;
-    dismissPopup();
-    if (val) void setDueDate(todoId, val);
-  });
+  function renderCalendar(): void {
+    popup.textContent = "";
 
-  popup.append(input, clearBtn);
+    // ---- ヘッダー (‹ 2025年4月 ›) ----
+    const header = document.createElement("div");
+    header.className = "ddc-header";
+
+    const prevBtn = document.createElement("button");
+    prevBtn.className = "ddc-nav-btn";
+    prevBtn.textContent = "‹";
+    prevBtn.setAttribute("aria-label", "前の月");
+    prevBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      viewMonth--;
+      if (viewMonth < 0) {
+        viewMonth = 11;
+        viewYear--;
+      }
+      renderCalendar();
+    });
+
+    const monthLabel = document.createElement("span");
+    monthLabel.className = "ddc-month-label";
+    monthLabel.textContent = `${viewYear}年${viewMonth + 1}月`;
+
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "ddc-nav-btn";
+    nextBtn.textContent = "›";
+    nextBtn.setAttribute("aria-label", "次の月");
+    nextBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      viewMonth++;
+      if (viewMonth > 11) {
+        viewMonth = 0;
+        viewYear++;
+      }
+      renderCalendar();
+    });
+
+    header.append(prevBtn, monthLabel, nextBtn);
+    popup.append(header);
+
+    // ---- 曜日ヘッダー ----
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const wdRow = document.createElement("div");
+    wdRow.className = "ddc-weekdays";
+    for (const wd of weekdays) {
+      const cell = document.createElement("span");
+      cell.className = "ddc-wd-cell";
+      if (wd === "日") cell.classList.add("ddc-wd-cell--sun");
+      if (wd === "土") cell.classList.add("ddc-wd-cell--sat");
+      cell.textContent = wd;
+      wdRow.append(cell);
+    }
+    popup.append(wdRow);
+
+    // ---- 日グリッド ----
+    const grid = document.createElement("div");
+    grid.className = "ddc-grid";
+
+    const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0=日
+    const lastDate = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const prevLastDate = new Date(viewYear, viewMonth, 0).getDate();
+
+    // 前月の埋め
+    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+      const cell = document.createElement("button");
+      cell.className = "ddc-day ddc-day--other";
+      cell.textContent = String(prevLastDate - i);
+      cell.tabIndex = -1;
+      grid.append(cell);
+    }
+
+    // 当月の日
+    for (let d = 1; d <= lastDate; d++) {
+      const mm = String(viewMonth + 1).padStart(2, "0");
+      const dd = String(d).padStart(2, "0");
+      const dateStr = `${viewYear}-${mm}-${dd}`;
+      const colIndex = (firstDayOfWeek + d - 1) % 7; // 0=日,6=土
+
+      const cell = document.createElement("button");
+      cell.className = "ddc-day";
+      if (colIndex === 0) cell.classList.add("ddc-day--sun");
+      if (colIndex === 6) cell.classList.add("ddc-day--sat");
+      cell.textContent = String(d);
+
+      if (viewYear === todayYear && viewMonth === todayMonth && d === todayDay) {
+        cell.classList.add("ddc-day--today");
+      }
+      if (currentDate === dateStr) {
+        cell.classList.add("ddc-day--selected");
+      }
+
+      cell.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectDate(dateStr);
+      });
+      grid.append(cell);
+    }
+
+    // 次月の埋め
+    const totalCells = firstDayOfWeek + lastDate;
+    const remainder = totalCells % 7;
+    const nextFill = remainder === 0 ? 0 : 7 - remainder;
+    for (let d = 1; d <= nextFill; d++) {
+      const cell = document.createElement("button");
+      cell.className = "ddc-day ddc-day--other";
+      cell.textContent = String(d);
+      cell.tabIndex = -1;
+      grid.append(cell);
+    }
+
+    popup.append(grid);
+
+    // ---- クイック選択ボタン ----
+    const quickRow = document.createElement("div");
+    quickRow.className = "ddc-quick-row";
+
+    const todayBtn = document.createElement("button");
+    todayBtn.className = "btn-ghost btn-sm";
+    todayBtn.textContent = "今日";
+    todayBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectDate(todayStr);
+    });
+
+    const tomorrowDate = new Date(now);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowStr = localDateString(tomorrowDate);
+    const tomorrowBtn = document.createElement("button");
+    tomorrowBtn.className = "btn-ghost btn-sm";
+    tomorrowBtn.textContent = "明日";
+    tomorrowBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectDate(tomorrowStr);
+    });
+
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "btn-ghost btn-sm";
+    clearBtn.textContent = "クリア";
+    clearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dismissPopup();
+      void setDueDate(todoId, null);
+    });
+
+    quickRow.append(todayBtn, tomorrowBtn, clearBtn);
+    popup.append(quickRow);
+  }
+
+  renderCalendar();
   document.body.append(popup);
 
+  // ---- 位置決め (position:fixed なので scrollY/X は不要) ----
+  const popupW = 280;
+  const popupH = 310;
   const rect = anchor.getBoundingClientRect();
-  const popupW = 200;
-  const popupH = 90;
   const spaceBelow = window.innerHeight - rect.bottom;
-  // position:fixed なので scrollY/X は不要
   const top = spaceBelow > popupH ? rect.bottom + 4 : rect.top - popupH - 4;
   const left = Math.min(Math.max(4, rect.left), window.innerWidth - popupW - 4);
   popup.style.top = `${top}px`;
@@ -682,12 +846,6 @@ function showDueDatePicker(
   popup.style.width = `${popupW}px`;
 
   setTimeout(() => {
-    // モバイルではネイティブpickerが開くので showPicker() を試みる
-    try {
-      (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
-    } catch {
-      input.focus();
-    }
     closeHandler = (e: MouseEvent): void => {
       if (!popup.contains(e.target as Node)) dismissPopup();
     };
