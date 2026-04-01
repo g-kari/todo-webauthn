@@ -15,7 +15,9 @@
     "format": "vp format",
     "check": "vp check",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@lexical/history": "^0.42.0",
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250401.0",
+    "@playwright/test": "^1.59.0",
     "typescript": "^5.8.3",
     "vite": "^8.0.3",
     "vite-plus": "^0.1.15",
