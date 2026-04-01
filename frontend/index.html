@@ -72,6 +72,9 @@
             </svg>
             <span class="header-github-text">GitHub</span>
           </a>
+          <button id="release-notes-btn" class="btn-ghost btn-sm" aria-label="リリースノート">
+            What's new
+          </button>
           <div id="lock-status" class="lock-status" style="display: none">
             <span id="lock-icon">🔒</span>
             <span id="lock-label"></span>
@@ -401,6 +404,24 @@
         </div>
       </section>
     </main>
+
+    <!-- ===== リリースノート モーダル ===== -->
+    <div
+      id="release-notes-modal"
+      class="rn-overlay"
+      style="display: none"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rn-title"
+    >
+      <div class="rn-dialog">
+        <div class="rn-header">
+          <h2 id="rn-title" class="rn-title">What's new</h2>
+          <button class="rn-close-btn" id="rn-close-btn" aria-label="閉じる">✕</button>
+        </div>
+        <div class="rn-body" id="rn-body"></div>
+      </div>
+    </div>
 
     <!-- ===== フッター ===== -->
     <footer id="site-footer">
