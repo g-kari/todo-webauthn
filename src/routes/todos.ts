@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Bindings } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { createDb } from '../db/index';
+import { generateId } from '../utils';
 
 type Variables = {
   userId: string;
@@ -11,14 +12,6 @@ type Variables = {
 const todos = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 todos.use('*', requireAuth());
-
-function generateId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 todos.get('/', async (c) => {
   const db = createDb(c.env);
