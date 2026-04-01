@@ -10,6 +10,7 @@ import {
   startAuthentication,
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser";
+import { RELEASES } from "./releases";
 import { createEditor, FORMAT_TEXT_COMMAND, type LexicalEditor } from "lexical";
 import { registerRichText, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { createEmptyHistoryState, registerHistory } from "@lexical/history";
@@ -2170,6 +2171,91 @@ if ("serviceWorker" in navigator) {
     });
   });
 }
+
+// ========================
+// リリースノート
+// ========================
+
+function setupReleaseNotes(): void {
+  const btn = document.getElementById("release-notes-btn");
+  const modal = document.getElementById("release-notes-modal");
+  const closeBtn = document.getElementById("rn-close-btn");
+  const body = document.getElementById("rn-body");
+  if (!btn || !modal || !closeBtn || !body) return;
+
+  const typeLabel: Record<string, string> = {
+    feat: "新機能",
+    fix: "修正",
+    security: "セキュリティ",
+    perf: "パフォーマンス",
+    refactor: "改善",
+  };
+
+  // モーダル内容を生成
+  for (const release of RELEASES) {
+    const section = document.createElement("div");
+    section.className = "rn-release";
+
+    const heading = document.createElement("div");
+    heading.className = "rn-release-heading";
+
+    const ver = document.createElement("span");
+    ver.className = "rn-version";
+    ver.textContent = `v${release.version}`;
+
+    const title = document.createElement("span");
+    title.className = "rn-release-title";
+    title.textContent = release.title;
+
+    const date = document.createElement("span");
+    date.className = "rn-date";
+    date.textContent = release.date;
+
+    heading.append(ver, title, date);
+
+    const list = document.createElement("ul");
+    list.className = "rn-list";
+    for (const change of release.changes) {
+      const li = document.createElement("li");
+      li.className = "rn-item";
+
+      const badge = document.createElement("span");
+      badge.className = `rn-badge rn-badge--${change.type}`;
+      badge.textContent = typeLabel[change.type] ?? change.type;
+
+      const text = document.createElement("span");
+      text.textContent = change.text;
+
+      li.append(badge, text);
+      list.append(li);
+    }
+
+    section.append(heading, list);
+    body.append(section);
+  }
+
+  function openModal(): void {
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    closeBtn.focus();
+  }
+
+  function closeModal(): void {
+    modal.style.display = "none";
+    document.body.style.overflow = "";
+  }
+
+  btn.addEventListener("click", openModal);
+  closeBtn.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display !== "none") closeModal();
+  });
+}
+
+setupReleaseNotes();
 
 // ========================
 // エントリポイント
