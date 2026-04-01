@@ -7,6 +7,21 @@ export interface ReleaseEntry {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    version: "1.6",
+    date: "2026-04-01",
+    title: "TODOソート機能 + リリースノート",
+    changes: [
+      {
+        type: "feat",
+        text: "TODOリストのソート機能を追加: 手動順 / 期日順 / 優先度順 / 作成日順",
+      },
+      {
+        type: "feat",
+        text: "ヘッダーに「What's new」ボタンを追加。バージョン別リリースノートをモーダルで閲覧可能",
+      },
+    ],
+  },
+  {
     version: "1.5",
     date: "2026-04-01",
     title: "セキュリティ強化 + Lexicalエディタ修正",

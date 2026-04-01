@@ -360,6 +360,17 @@
             </div>
             <div class="todo-toolbar-right">
               <span id="todo-count" class="todo-count"></span>
+              <select
+                id="sort-select"
+                class="sort-select"
+                aria-label="並び順"
+                onchange="setSort(this.value)"
+              >
+                <option value="manual">手動順</option>
+                <option value="dueDate">期日順</option>
+                <option value="priority">優先度順</option>
+                <option value="created">作成日順</option>
+              </select>
               <div class="view-toggle" role="group" aria-label="表示モード">
                 <button
                   class="view-btn active"
