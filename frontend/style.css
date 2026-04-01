@@ -794,6 +794,33 @@ input::placeholder {
   gap: 8px;
 }
 
+/* ソート選択 */
+.sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--color-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23a39696'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  height: 30px;
+  padding: 0 26px 0 10px;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.sort-select:hover,
+.sort-select:focus {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  outline: none;
+}
+
 /* ビュー切り替え */
 .view-toggle {
   display: flex;
@@ -1364,6 +1391,12 @@ input::placeholder {
 }
 .drag-handle:active {
   cursor: grabbing;
+}
+
+/* ソート時はドラッグハンドルを非表示 */
+.todo-list.sorted .drag-handle {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* ドラッグ中のビジュアルフィードバック */

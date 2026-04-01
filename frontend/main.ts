@@ -51,6 +51,7 @@ interface TodoData {
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
 
 type Filter = "all" | "active" | "completed";
+type Sort = "manual" | "dueDate" | "priority" | "created";
 
 interface UserSettings {
   view: ViewMode;
@@ -91,6 +92,7 @@ let encryptionKey: CryptoKey | null = null;
 let todosCache: EncryptedTodo[] = [];
 let decryptedCache: DecryptedTodo[] = [];
 let currentFilter: Filter = "all";
+let currentSort: Sort = "manual";
 
 /** 開いているLexicalエディタのマップ */
 const openEditors = new Map<string, { editor: LexicalEditor; cleanup: (() => void)[] }>();
@@ -556,6 +558,28 @@ function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
   if (currentFilter === "active") return todos.filter((t) => !t.completed);
   if (currentFilter === "completed") return todos.filter((t) => t.completed);
   return todos;
+}
+
+const PRIORITY_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+function applySort(todos: DecryptedTodo[]): DecryptedTodo[] {
+  if (currentSort === "manual") return todos;
+  const sorted = [...todos];
+  if (currentSort === "dueDate") {
+    sorted.sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    });
+  } else if (currentSort === "priority") {
+    sorted.sort(
+      (a, b) => (PRIORITY_ORDER[b.priority ?? ""] ?? 0) - (PRIORITY_ORDER[a.priority ?? ""] ?? 0),
+    );
+  } else if (currentSort === "created") {
+    sorted.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  }
+  return sorted;
 }
 
 // ========================
@@ -1862,7 +1886,7 @@ function renderTodos(todos: DecryptedTodo[]): void {
     return;
   }
 
-  const filtered = applyFilter(searched);
+  const filtered = applySort(applyFilter(searched));
 
   if (filtered.length === 0) {
     const icon = document.createElement("div");
@@ -1878,6 +1902,9 @@ function renderTodos(todos: DecryptedTodo[]): void {
     listEl.replaceChildren(empty);
     return;
   }
+
+  // ソート中はドラッグハンドルを非表示（手動並び替えと競合するため）
+  listEl.classList.toggle("sorted", currentSort !== "manual");
 
   // 差分更新: 既存の .todo-wrapper を再利用してノートパネルを保持する
   const existingWrappers = new Map<string, HTMLElement>();
@@ -2029,6 +2056,11 @@ function setFilter(filter: Filter): void {
   renderTodos(decryptedCache);
 }
 
+function setSort(sort: Sort): void {
+  currentSort = sort;
+  renderTodos(decryptedCache);
+}
+
 // ========================
 // 完了済み一括削除
 // ========================
@@ -2134,6 +2166,7 @@ declare global {
     unlockHandler: () => void;
     addTodoHandler: () => void;
     setFilter: (filter: Filter) => void;
+    setSort: (sort: Sort) => void;
     clearCompletedHandler: () => void;
     showAuthFromLP: () => void;
     showLP: () => void;
@@ -2151,6 +2184,7 @@ window.registerHandler = doRegister;
 window.unlockHandler = doUnlock;
 window.addTodoHandler = addTodo;
 window.setFilter = setFilter;
+window.setSort = setSort;
 window.clearCompletedHandler = clearCompleted;
 window.showAuthFromLP = showAuthCard;
 window.showLP = showLP;
