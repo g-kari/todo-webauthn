@@ -1967,7 +1967,7 @@ async function deleteTodo(id: string): Promise<void> {
 // ========================
 
 function startEditTodo(id: string, currentTitle: string): void {
-  const item = document.querySelector<HTMLElement>(`.todo-item[data-id="${id}"]`);
+  const item = document.querySelector<HTMLElement>(`.todo-item[data-id="${CSS.escape(id)}"]`);
   if (!item) return;
 
   const titleEl = item.querySelector<HTMLElement>(".todo-title");

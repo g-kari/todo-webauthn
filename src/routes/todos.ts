@@ -34,10 +34,14 @@ todos.post("/", async (c) => {
   return c.json(todo, 201);
 });
 
+const MAX_ID_LEN = 64;
+
 todos.put("/reorder", async (c) => {
   const { ids } = await c.req.json<{ ids: string[] }>();
   if (!Array.isArray(ids) || ids.length > 10000)
     return c.json({ error: "IDの配列が必要ですわ" }, 400);
+  if (ids.some((id) => typeof id !== "string" || id.length > MAX_ID_LEN))
+    return c.json({ error: "IDが不正ですわ" }, 400);
 
   const db = createDb(c.env);
   await db.reorderTodos(ids, c.get("userId"));
@@ -50,6 +54,16 @@ todos.post("/bulk", async (c) => {
   }>();
   if (!Array.isArray(updates) || updates.length > 10000)
     return c.json({ error: "TODOの配列が必要ですわ" }, 400);
+  const invalid = updates.some(
+    (u) =>
+      typeof u.id !== "string" ||
+      u.id.length > MAX_ID_LEN ||
+      typeof u.encrypted_data !== "string" ||
+      u.encrypted_data.length > MAX_ENCRYPTED_LEN ||
+      typeof u.iv !== "string" ||
+      u.iv.length !== IV_LEN,
+  );
+  if (invalid) return c.json({ error: "データが不正ですわ" }, 400);
 
   const db = createDb(c.env);
   await db.bulkUpdateTodos(updates, c.get("userId"));

@@ -58,8 +58,13 @@ describe("GET /api/todos", () => {
 
   it("DB から返ったTODO一覧をそのまま返す", async () => {
     const fakeTodo = {
-      id: "t1", user_id: USER_ID, encrypted_data: "enc", iv: "iv-iv-iv-iv-iv--",
-      order_index: 0, created_at: "2024-01-01", updated_at: "2024-01-01",
+      id: "t1",
+      user_id: USER_ID,
+      encrypted_data: "enc",
+      iv: "iv-iv-iv-iv-iv--",
+      order_index: 0,
+      created_at: "2024-01-01",
+      updated_at: "2024-01-01",
     };
     vi.mocked(db.findTodosByUserId).mockResolvedValue([fakeTodo]);
 
@@ -69,7 +74,7 @@ describe("GET /api/todos", () => {
       await makeEnv(),
     );
     expect(res.status).toBe(200);
-    const body = await res.json() as unknown[];
+    const body = (await res.json()) as unknown[];
     expect(body).toHaveLength(1);
   });
 });
@@ -131,7 +136,7 @@ describe("POST /api/todos", () => {
       await makeEnv(),
     );
     expect(res.status).toBe(201);
-    const body = await res.json() as { encrypted_data: string; iv: string };
+    const body = (await res.json()) as { encrypted_data: string; iv: string };
     expect(body.encrypted_data).toBe(VALID_ENC);
     expect(body.iv).toBe(VALID_IV);
   });
@@ -175,8 +180,13 @@ describe("PUT /api/todos/:id", () => {
 
   it("存在するTODOは正常更新され 200 を返す", async () => {
     const existing = {
-      id: "t1", user_id: USER_ID, encrypted_data: "old", iv: VALID_IV,
-      order_index: 0, created_at: "2024-01-01", updated_at: "2024-01-01",
+      id: "t1",
+      user_id: USER_ID,
+      encrypted_data: "old",
+      iv: VALID_IV,
+      order_index: 0,
+      created_at: "2024-01-01",
+      updated_at: "2024-01-01",
     };
     vi.mocked(db.findTodoById).mockResolvedValue(existing);
 
@@ -245,6 +255,19 @@ describe("PUT /api/todos/reorder", () => {
     expect(res.status).toBe(400);
   });
 
+  it("IDが 64文字を超える場合は 400 を返す", async () => {
+    const res = await app.request(
+      "/api/todos/reorder",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: await authCookie() },
+        body: JSON.stringify({ ids: ["a".repeat(65)] }),
+      },
+      await makeEnv(),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("正常な配列は 200 を返す", async () => {
     const res = await app.request(
       "/api/todos/reorder",
@@ -252,6 +275,72 @@ describe("PUT /api/todos/reorder", () => {
         method: "PUT",
         headers: { "Content-Type": "application/json", Cookie: await authCookie() },
         body: JSON.stringify({ ids: ["t1", "t2"] }),
+      },
+      await makeEnv(),
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /api/todos/bulk", () => {
+  let app: Hono<{ Bindings: Env }>;
+
+  beforeEach(() => {
+    app = buildApp();
+  });
+
+  it("配列でない場合は 400 を返す", async () => {
+    const res = await app.request(
+      "/api/todos/bulk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: await authCookie() },
+        body: JSON.stringify({ todos: "not-an-array" }),
+      },
+      await makeEnv(),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("encrypted_data が 64KB を超える場合は 400 を返す", async () => {
+    const res = await app.request(
+      "/api/todos/bulk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: await authCookie() },
+        body: JSON.stringify({
+          todos: [{ id: "t1", encrypted_data: "a".repeat(65537), iv: VALID_IV }],
+        }),
+      },
+      await makeEnv(),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("iv が不正な場合は 400 を返す", async () => {
+    const res = await app.request(
+      "/api/todos/bulk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: await authCookie() },
+        body: JSON.stringify({
+          todos: [{ id: "t1", encrypted_data: VALID_ENC, iv: "bad" }],
+        }),
+      },
+      await makeEnv(),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("正常なデータは 200 を返す", async () => {
+    const res = await app.request(
+      "/api/todos/bulk",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: await authCookie() },
+        body: JSON.stringify({
+          todos: [{ id: "t1", encrypted_data: VALID_ENC, iv: VALID_IV }],
+        }),
       },
       await makeEnv(),
     );
