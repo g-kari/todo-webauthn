@@ -9,21 +9,17 @@ import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
-} from '@simplewebauthn/browser';
-import {
-  createEditor,
-  FORMAT_TEXT_COMMAND,
-  type LexicalEditor,
-} from 'lexical';
-import { registerRichText, HeadingNode, QuoteNode } from '@lexical/rich-text';
-import { createEmptyHistoryState, registerHistory } from '@lexical/history';
+} from "@simplewebauthn/browser";
+import { createEditor, FORMAT_TEXT_COMMAND, type LexicalEditor } from "lexical";
+import { registerRichText, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { createEmptyHistoryState, registerHistory } from "@lexical/history";
 import {
   ListNode,
   ListItemNode,
   registerList,
   INSERT_UNORDERED_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
-} from '@lexical/list';
+} from "@lexical/list";
 
 // ========================
 // 型定義
@@ -38,47 +34,51 @@ interface EncryptedTodo {
   updated_at: string;
 }
 
-type Priority = 'high' | 'medium' | 'low';
-type KanbanStatus = 'todo' | 'doing' | 'done';
-type ViewMode = 'list' | 'kanban';
+type Priority = "high" | "medium" | "low";
+type KanbanStatus = "todo" | "doing" | "done";
+type ViewMode = "list" | "kanban";
 
 interface TodoData {
   title: string;
   completed: boolean;
   priority?: Priority;
-  dueDate?: string;        // "YYYY-MM-DD"
-  notes?: string;          // Lexical editor state JSON string
-  status?: KanbanStatus;   // カンバン列
+  dueDate?: string; // "YYYY-MM-DD"
+  notes?: string; // Lexical editor state JSON string
+  status?: KanbanStatus; // カンバン列
 }
 
 interface DecryptedTodo extends EncryptedTodo, TodoData {}
 
-type Filter = 'all' | 'active' | 'completed';
+type Filter = "all" | "active" | "completed";
 
 interface UserSettings {
   view: ViewMode;
   kanbanColumns: Record<KanbanStatus, string>;
   accentColor: string;
-  fontSize: 'sm' | 'md' | 'lg';
+  fontSize: "sm" | "md" | "lg";
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  view: 'list',
-  kanbanColumns: { todo: '未着手', doing: '進行中', done: '完了' },
-  accentColor: '#73862d',
-  fontSize: 'md',
+  view: "list",
+  kanbanColumns: { todo: "未着手", doing: "進行中", done: "完了" },
+  accentColor: "#73862d",
+  fontSize: "md",
 };
 
-const ACCENT_PRESETS = ['#73862d', '#2d6886', '#862d3c', '#6b4c86', '#86632d', '#2d7055'] as const;
-const FONT_SIZE_MAP: Record<UserSettings['fontSize'], string> = { sm: '14px', md: '16px', lg: '18px' };
-const KANBAN_ORDER: KanbanStatus[] = ['todo', 'doing', 'done'];
+const ACCENT_PRESETS = ["#73862d", "#2d6886", "#862d3c", "#6b4c86", "#86632d", "#2d7055"] as const;
+const FONT_SIZE_MAP: Record<UserSettings["fontSize"], string> = {
+  sm: "14px",
+  md: "16px",
+  lg: "18px",
+};
+const KANBAN_ORDER: KanbanStatus[] = ["todo", "doing", "done"];
 
-const PRIORITY_LABEL: Record<Priority, string> = { high: '高', medium: '中', low: '低' };
-const PRIORITY_NEXT: Record<Priority, Priority> = { high: 'medium', medium: 'low', low: 'high' };
+const PRIORITY_LABEL: Record<Priority, string> = { high: "高", medium: "中", low: "低" };
+const PRIORITY_NEXT: Record<Priority, Priority> = { high: "medium", medium: "low", low: "high" };
 const PRIORITY_TITLE: Record<Priority, string> = {
-  high: '優先度: 高（クリックで変更）',
-  medium: '優先度: 中（クリックで変更）',
-  low: '優先度: 低（クリックで変更）',
+  high: "優先度: 高（クリックで変更）",
+  medium: "優先度: 中（クリックで変更）",
+  low: "優先度: 低（クリックで変更）",
 };
 
 // ========================
@@ -89,7 +89,7 @@ const PRIORITY_TITLE: Record<Priority, string> = {
 let encryptionKey: CryptoKey | null = null;
 let todosCache: EncryptedTodo[] = [];
 let decryptedCache: DecryptedTodo[] = [];
-let currentFilter: Filter = 'all';
+let currentFilter: Filter = "all";
 
 /** 開いているLexicalエディタのマップ */
 const openEditors = new Map<string, { editor: LexicalEditor; cleanup: (() => void)[] }>();
@@ -99,11 +99,11 @@ let draggedId: string | null = null;
 let dragOverId: string | null = null;
 
 /** 検索クエリ（小文字正規化済み） */
-let searchQuery = '';
+let searchQuery = "";
 
 /** ユーザー設定 */
 let settings: UserSettings = { ...DEFAULT_SETTINGS };
-let currentView: ViewMode = 'list';
+let currentView: ViewMode = "list";
 
 // ========================
 // 起動処理
@@ -111,7 +111,7 @@ let currentView: ViewMode = 'list';
 
 async function init(): Promise<void> {
   if (!browserSupportsWebAuthn()) {
-    alert('このブラウザはWebAuthnをサポートしていませんわ');
+    alert("このブラウザはWebAuthnをサポートしていませんわ");
     return;
   }
 
@@ -119,9 +119,9 @@ async function init(): Promise<void> {
   applySettings();
 
   try {
-    const res = await fetch('/api/auth/me');
+    const res = await fetch("/api/auth/me");
     if (res.ok) {
-      const user = await res.json() as { id: string; username: string };
+      const user = (await res.json()) as { id: string; username: string };
       showUnlockSection(user.username);
     } else {
       showLP();
@@ -136,58 +136,59 @@ async function init(): Promise<void> {
 // ========================
 
 function hideAll(): void {
-  document.getElementById('lp-section')!.style.display = 'none';
-  document.getElementById('auth-section')!.style.display = 'none';
-  document.getElementById('unlock-section')!.style.display = 'none';
-  document.getElementById('todo-section')!.style.display = 'none';
-  document.getElementById('lock-status')!.style.display = 'none';
-  document.getElementById('logout-btn')!.style.display = 'none';
-  document.getElementById('site-footer')!.style.display = '';
+  document.getElementById("lp-section")!.style.display = "none";
+  document.getElementById("auth-section")!.style.display = "none";
+  document.getElementById("unlock-section")!.style.display = "none";
+  document.getElementById("todo-section")!.style.display = "none";
+  document.getElementById("lock-status")!.style.display = "none";
+  document.getElementById("logout-btn")!.style.display = "none";
+  document.getElementById("site-footer")!.style.display = "";
 }
 
 function showLP(): void {
   hideAll();
-  document.getElementById('lp-section')!.style.display = '';
+  document.getElementById("lp-section")!.style.display = "";
 }
 
 function showAuthCard(): void {
   hideAll();
-  document.getElementById('auth-section')!.style.display = '';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById("auth-section")!.style.display = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function showUnlockSection(username: string): void {
   hideAll();
-  document.getElementById('unlock-section')!.style.display = '';
-  document.getElementById('lock-status')!.style.display = '';
-  document.getElementById('lock-status')!.className = 'lock-status locked';
-  document.getElementById('lock-icon')!.textContent = '🔒';
-  document.getElementById('lock-label')!.textContent = username;
-  document.getElementById('logout-btn')!.style.display = '';
+  document.getElementById("unlock-section")!.style.display = "";
+  document.getElementById("lock-status")!.style.display = "";
+  document.getElementById("lock-status")!.className = "lock-status locked";
+  document.getElementById("lock-icon")!.textContent = "🔒";
+  document.getElementById("lock-label")!.textContent = username;
+  document.getElementById("logout-btn")!.style.display = "";
 }
 
 function showTodoSection(username: string): void {
   hideAll();
-  document.getElementById('todo-section')!.style.display = '';
-  document.getElementById('lock-status')!.style.display = '';
-  document.getElementById('lock-status')!.className = 'lock-status unlocked';
-  document.getElementById('lock-icon')!.textContent = '🔓';
-  document.getElementById('lock-label')!.textContent = username;
-  document.getElementById('logout-btn')!.style.display = '';
+  document.getElementById("todo-section")!.style.display = "";
+  document.getElementById("lock-status")!.style.display = "";
+  document.getElementById("lock-status")!.className = "lock-status unlocked";
+  document.getElementById("lock-icon")!.textContent = "🔓";
+  document.getElementById("lock-label")!.textContent = username;
+  document.getElementById("logout-btn")!.style.display = "";
   // リストDnDはイベント委譲なので一度だけ設定すればよい
-  setupDragAndDrop(document.getElementById('todo-list')!);
+  setupDragAndDrop(document.getElementById("todo-list")!);
+  setupTouchDnD(document.getElementById("todo-list")!);
 }
 
 // ========================
 // タブ切り替え（グローバル公開）
 // ========================
 
-function switchTab(tab: 'login' | 'register'): void {
-  const isLogin = tab === 'login';
-  document.getElementById('tab-login')!.className = 'tab-btn' + (isLogin ? ' active' : '');
-  document.getElementById('tab-register')!.className = 'tab-btn' + (!isLogin ? ' active' : '');
-  document.getElementById('login-form')!.style.display = isLogin ? '' : 'none';
-  document.getElementById('register-form')!.style.display = isLogin ? 'none' : '';
+function switchTab(tab: "login" | "register"): void {
+  const isLogin = tab === "login";
+  document.getElementById("tab-login")!.className = "tab-btn" + (isLogin ? " active" : "");
+  document.getElementById("tab-register")!.className = "tab-btn" + (!isLogin ? " active" : "");
+  document.getElementById("login-form")!.style.display = isLogin ? "" : "none";
+  document.getElementById("register-form")!.style.display = isLogin ? "none" : "";
 }
 
 // ========================
@@ -195,37 +196,37 @@ function switchTab(tab: 'login' | 'register'): void {
 // ========================
 
 async function doRegister(): Promise<void> {
-  const usernameEl = document.getElementById('reg-username') as HTMLInputElement;
+  const usernameEl = document.getElementById("reg-username") as HTMLInputElement;
   const username = usernameEl.value.trim();
   if (!username) {
-    showMessage('register-message', 'ユーザー名を入力してくださいませ', 'error');
+    showMessage("register-message", "ユーザー名を入力してくださいませ", "error");
     return;
   }
 
-  const btn = document.getElementById('register-btn') as HTMLButtonElement;
+  const btn = document.getElementById("register-btn") as HTMLButtonElement;
   btn.disabled = true;
-  btn.textContent = 'パスキーを登録中...';
-  clearMessage('register-message');
+  btn.textContent = "パスキーを登録中...";
+  clearMessage("register-message");
 
   try {
-    const optRes = await fetch('/api/auth/register/options', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const optRes = await fetch("/api/auth/register/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username }),
     });
     if (!optRes.ok) {
-      const err = await optRes.json() as { error: string };
+      const err = (await optRes.json()) as { error: string };
       throw new Error(err.error);
     }
-    const { options, userId, prfSalt } = await optRes.json() as {
-      options: Parameters<typeof startRegistration>[0]['optionsJSON'];
+    const { options, userId, prfSalt } = (await optRes.json()) as {
+      options: Parameters<typeof startRegistration>[0]["optionsJSON"];
       userId: string;
       prfSalt: string;
     };
 
     // PRF拡張を追加
     (options as Record<string, unknown>).extensions = {
-      ...((options as Record<string, unknown>).extensions as object ?? {}),
+      ...(((options as Record<string, unknown>).extensions as object) ?? {}),
       prf: {},
     };
 
@@ -234,39 +235,42 @@ async function doRegister(): Promise<void> {
       credential = await startRegistration({ optionsJSON: options });
     } catch (err: unknown) {
       const e = err as { name?: string };
-      if (e.name === 'NotAllowedError') throw new Error('キャンセルされましたわ');
+      if (e.name === "NotAllowedError") throw new Error("キャンセルされましたわ");
       throw err;
     }
 
-    const prfCapable = (credential.clientExtensionResults as Record<string, unknown> & {
-      prf?: { enabled?: boolean };
-    })?.prf?.enabled === true;
+    const prfCapable =
+      (
+        credential.clientExtensionResults as Record<string, unknown> & {
+          prf?: { enabled?: boolean };
+        }
+      )?.prf?.enabled === true;
 
     if (!prfCapable) {
       throw new Error(
-        'お使いの認証器はPRF拡張をサポートしていませんわ。\n' +
-        '1Password・iCloud Keychain・YubiKey(FW5.7+)などが対応していますわ。'
+        "お使いの認証器はPRF拡張をサポートしていませんわ。\n" +
+          "1Password・iCloud Keychain・YubiKey(FW5.7+)などが対応していますわ。",
       );
     }
 
-    const verRes = await fetch('/api/auth/register/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const verRes = await fetch("/api/auth/register/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, userId, prfSalt, prfCapable, credential }),
     });
     if (!verRes.ok) {
-      const err = await verRes.json() as { error: string };
+      const err = (await verRes.json()) as { error: string };
       throw new Error(err.error);
     }
 
-    showMessage('register-message', '登録完了ですわ！ログインしてください', 'success');
-    usernameEl.value = '';
-    setTimeout(() => switchTab('login'), 1500);
+    showMessage("register-message", "登録完了ですわ！ログインしてください", "success");
+    usernameEl.value = "";
+    setTimeout(() => switchTab("login"), 1500);
   } catch (err: unknown) {
-    showMessage('register-message', String((err as Error).message ?? err), 'error');
+    showMessage("register-message", String((err as Error).message ?? err), "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = 'パスキーを登録';
+    btn.textContent = "パスキーを登録";
   }
 }
 
@@ -275,22 +279,22 @@ async function doRegister(): Promise<void> {
 // ========================
 
 async function doLogin(): Promise<void> {
-  const username = (document.getElementById('login-username') as HTMLInputElement).value.trim();
+  const username = (document.getElementById("login-username") as HTMLInputElement).value.trim();
   if (!username) {
-    showMessage('login-message', 'ユーザー名を入力してくださいませ', 'error');
+    showMessage("login-message", "ユーザー名を入力してくださいませ", "error");
     return;
   }
 
-  const btn = document.getElementById('login-btn') as HTMLButtonElement;
+  const btn = document.getElementById("login-btn") as HTMLButtonElement;
   btn.disabled = true;
-  btn.textContent = '認証中...';
-  clearMessage('login-message');
+  btn.textContent = "認証中...";
+  clearMessage("login-message");
 
   try {
-    await performAuthentication(username, 'login-message');
+    await performAuthentication(username, "login-message");
   } finally {
     btn.disabled = false;
-    btn.textContent = 'パスキーでログイン';
+    btn.textContent = "パスキーでログイン";
   }
 }
 
@@ -299,15 +303,18 @@ async function doLogin(): Promise<void> {
 // ========================
 
 async function doUnlock(): Promise<void> {
-  clearMessage('unlock-message');
+  clearMessage("unlock-message");
 
   try {
-    const meRes = await fetch('/api/auth/me');
-    if (!meRes.ok) { showLP(); return; }
-    const user = await meRes.json() as { username: string };
-    await performAuthentication(user.username, 'unlock-message');
+    const meRes = await fetch("/api/auth/me");
+    if (!meRes.ok) {
+      showLP();
+      return;
+    }
+    const user = (await meRes.json()) as { username: string };
+    await performAuthentication(user.username, "unlock-message");
   } catch (err: unknown) {
-    showMessage('unlock-message', String((err as Error).message ?? err), 'error');
+    showMessage("unlock-message", String((err as Error).message ?? err), "error");
   }
 }
 
@@ -316,17 +323,17 @@ async function doUnlock(): Promise<void> {
 // ========================
 
 async function performAuthentication(username: string, messageId: string): Promise<void> {
-  const optRes = await fetch('/api/auth/login/options', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const optRes = await fetch("/api/auth/login/options", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username }),
   });
   if (!optRes.ok) {
-    const err = await optRes.json() as { error: string };
+    const err = (await optRes.json()) as { error: string };
     throw new Error(err.error);
   }
-  const { options, prfSalts } = await optRes.json() as {
-    options: Parameters<typeof startAuthentication>[0]['optionsJSON'];
+  const { options, prfSalts } = (await optRes.json()) as {
+    options: Parameters<typeof startAuthentication>[0]["optionsJSON"];
     prfSalts: Record<string, string>;
   };
 
@@ -337,7 +344,7 @@ async function performAuthentication(username: string, messageId: string): Promi
   }
 
   (options as Record<string, unknown>).extensions = {
-    ...((options as Record<string, unknown>).extensions as object ?? {}),
+    ...(((options as Record<string, unknown>).extensions as object) ?? {}),
     prf: Object.keys(evalByCredential).length > 0 ? { evalByCredential } : {},
   };
 
@@ -346,38 +353,40 @@ async function performAuthentication(username: string, messageId: string): Promi
     credential = await startAuthentication({ optionsJSON: options });
   } catch (err: unknown) {
     const e = err as { name?: string };
-    if (e.name === 'NotAllowedError') throw new Error('キャンセルされましたわ');
+    if (e.name === "NotAllowedError") throw new Error("キャンセルされましたわ");
     throw err;
   }
 
-  const prfResults = (credential.clientExtensionResults as Record<string, unknown> & {
-    prf?: { results?: { first?: ArrayBuffer } };
-  })?.prf?.results?.first;
+  const prfResults = (
+    credential.clientExtensionResults as Record<string, unknown> & {
+      prf?: { results?: { first?: ArrayBuffer } };
+    }
+  )?.prf?.results?.first;
 
   if (!prfResults) {
-    throw new Error('PRF出力が得られませんでしたわ。PRF対応の認証器が必要ですわ。');
+    throw new Error("PRF出力が得られませんでしたわ。PRF対応の認証器が必要ですわ。");
   }
 
   // PRF出力はサーバーに送らない
-  const verRes = await fetch('/api/auth/login/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const verRes = await fetch("/api/auth/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credential),
   });
   if (!verRes.ok) {
-    const err = await verRes.json() as { error: string };
+    const err = (await verRes.json()) as { error: string };
     throw new Error(err.error);
   }
 
   // PRF出力 → HKDF → AES-GCM-256鍵
   encryptionKey = await deriveEncryptionKey(prfResults);
 
-  const meRes = await fetch('/api/auth/me');
+  const meRes = await fetch("/api/auth/me");
   if (!meRes.ok) {
     encryptionKey = null;
-    throw new Error('セッション取得に失敗しましたわ');
+    throw new Error("セッション取得に失敗しましたわ");
   }
-  const user = await meRes.json() as { username: string };
+  const user = (await meRes.json()) as { username: string };
   showTodoSection(user.username);
   await loadTodos();
 
@@ -388,12 +397,12 @@ async function performAuthentication(username: string, messageId: string): Promi
 // ログアウト
 // ========================
 
-document.getElementById('logout-btn')!.addEventListener('click', async () => {
-  await fetch('/api/auth/logout', { method: 'POST' });
+document.getElementById("logout-btn")!.addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
   encryptionKey = null;
   todosCache = [];
   decryptedCache = [];
-  currentFilter = 'all';
+  currentFilter = "all";
   closeAllEditors();
   showLP();
 });
@@ -403,36 +412,37 @@ document.getElementById('logout-btn')!.addEventListener('click', async () => {
 // ========================
 
 async function deriveEncryptionKey(prfOutput: ArrayBuffer): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey('raw', prfOutput, 'HKDF', false, [
-    'deriveKey',
-  ]);
+  const keyMaterial = await crypto.subtle.importKey("raw", prfOutput, "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     {
-      name: 'HKDF',
-      hash: 'SHA-256',
+      name: "HKDF",
+      hash: "SHA-256",
       salt: new Uint8Array(0),
-      info: new TextEncoder().encode('webauthn-todo-encryption-v1'),
+      info: new TextEncoder().encode("webauthn-todo-encryption-v1"),
     },
     keyMaterial,
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"],
   );
 }
 
 async function encryptTodo(data: TodoData): Promise<{ encrypted_data: string; iv: string }> {
-  if (!encryptionKey) throw new Error('暗号鍵がありませんわ');
+  if (!encryptionKey) throw new Error("暗号鍵がありませんわ");
   const plaintext = new TextEncoder().encode(JSON.stringify(data));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encryptionKey, plaintext);
-  return { encrypted_data: bufferToBase64(ciphertext), iv: bufferToBase64(iv.buffer as ArrayBuffer) };
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, encryptionKey, plaintext);
+  return {
+    encrypted_data: bufferToBase64(ciphertext),
+    iv: bufferToBase64(iv.buffer as ArrayBuffer),
+  };
 }
 
 async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoData> {
-  if (!encryptionKey) throw new Error('暗号鍵がありませんわ');
+  if (!encryptionKey) throw new Error("暗号鍵がありませんわ");
   const ciphertext = base64ToBuffer(encryptedData);
   const iv = base64ToBuffer(ivStr);
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, encryptionKey, ciphertext);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, encryptionKey, ciphertext);
   return JSON.parse(new TextDecoder().decode(plaintext)) as TodoData;
 }
 
@@ -443,9 +453,15 @@ async function decryptTodo(encryptedData: string, ivStr: string): Promise<TodoDa
 /** 両キャッシュの暗号化フィールドを更新する共通処理 */
 function syncEncryptedCache(id: string, encrypted_data: string, iv: string): void {
   const cached = todosCache.find((t) => t.id === id);
-  if (cached) { cached.encrypted_data = encrypted_data; cached.iv = iv; }
+  if (cached) {
+    cached.encrypted_data = encrypted_data;
+    cached.iv = iv;
+  }
   const dec = decryptedCache.find((t) => t.id === id);
-  if (dec) { dec.encrypted_data = encrypted_data; dec.iv = iv; }
+  if (dec) {
+    dec.encrypted_data = encrypted_data;
+    dec.iv = iv;
+  }
 }
 
 /** Todo を部分更新する（楽観的UI更新→バックグラウンド同期） */
@@ -463,38 +479,38 @@ async function patchTodo(id: string, patch: Partial<TodoData>): Promise<void> {
   syncEncryptedCache(id, encrypted_data, iv);
 
   const res = await fetch(`/api/todos/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ encrypted_data, iv }),
   });
-  if (!res.ok) throw new Error('更新に失敗しましたわ');
+  if (!res.ok) throw new Error("更新に失敗しましたわ");
 }
 
 async function loadTodos(): Promise<void> {
   // エディタを全部閉じる（再描画するため）
   closeAllEditors();
 
-  const listEl = document.getElementById('todo-list')!;
+  const listEl = document.getElementById("todo-list")!;
   listEl.innerHTML = '<div class="loading"><span class="spinner"></span>読み込み中...</div>';
 
   try {
-    const res = await fetch('/api/todos');
-    if (!res.ok) throw new Error('取得に失敗しましたわ');
+    const res = await fetch("/api/todos");
+    if (!res.ok) throw new Error("取得に失敗しましたわ");
 
-    const encrypted = await res.json() as EncryptedTodo[];
+    const encrypted = (await res.json()) as EncryptedTodo[];
     todosCache = encrypted;
 
     decryptedCache = await Promise.all(
       encrypted.map(async (todo) => {
         const data = await decryptTodo(todo.encrypted_data, todo.iv);
         return { ...todo, ...data };
-      })
+      }),
     );
 
     renderTodos(decryptedCache);
   } catch (err: unknown) {
-    const errEl = document.createElement('div');
-    errEl.className = 'message error show';
+    const errEl = document.createElement("div");
+    errEl.className = "message error show";
     errEl.textContent = (err as Error).message;
     listEl.replaceChildren(errEl);
   }
@@ -506,8 +522,8 @@ function applySearch(todos: DecryptedTodo[]): DecryptedTodo[] {
 }
 
 function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
-  if (currentFilter === 'active') return todos.filter((t) => !t.completed);
-  if (currentFilter === 'completed') return todos.filter((t) => t.completed);
+  if (currentFilter === "active") return todos.filter((t) => !t.completed);
+  if (currentFilter === "completed") return todos.filter((t) => t.completed);
   return todos;
 }
 
@@ -517,17 +533,17 @@ function applyFilter(todos: DecryptedTodo[]): DecryptedTodo[] {
 
 function setSearch(q: string): void {
   searchQuery = q.toLowerCase();
-  const clearBtn = document.getElementById('search-clear')!;
-  clearBtn.style.display = searchQuery ? '' : 'none';
-  const input = document.getElementById('search-input') as HTMLInputElement;
+  const clearBtn = document.getElementById("search-clear")!;
+  clearBtn.style.display = searchQuery ? "" : "none";
+  const input = document.getElementById("search-input") as HTMLInputElement;
   if (input.value !== q) input.value = q;
   renderTodos(decryptedCache);
 }
 
 const EMPTY_MESSAGES: Record<Filter, string> = {
-  active: '未完了のTODOはありませんわ！',
-  completed: '完了済みのTODOはありませんわ',
-  all: 'TODOがありませんわ。追加してみてくださいませ！',
+  active: "未完了のTODOはありませんわ！",
+  completed: "完了済みのTODOはありませんわ",
+  all: "TODOがありませんわ。追加してみてくださいませ！",
 };
 
 // ========================
@@ -535,14 +551,14 @@ const EMPTY_MESSAGES: Record<Filter, string> = {
 // ========================
 
 function formatDueDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = new Date(dateStr + "T00:00:00");
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diff === 0) return '今日';
-  if (diff === 1) return '明日';
-  if (diff === -1) return '昨日';
+  if (diff === 0) return "今日";
+  if (diff === 1) return "明日";
+  if (diff === -1) return "昨日";
   if (diff > 0 && diff < 7) return `${diff}日後`;
 
   const month = date.getMonth() + 1;
@@ -551,30 +567,30 @@ function formatDueDate(dateStr: string): string {
 }
 
 function createDueDateElement(todo: DecryptedTodo): HTMLElement {
-  const container = document.createElement('span');
-  container.className = 'todo-date-wrap';
+  const container = document.createElement("span");
+  container.className = "todo-date-wrap";
 
   if (todo.dueDate) {
     const today = new Date().toISOString().slice(0, 10);
     const isOverdue = todo.dueDate < today && !todo.completed;
     const isToday = todo.dueDate === today;
 
-    const badge = document.createElement('button');
-    badge.className = `todo-due-date${isOverdue ? ' overdue' : isToday ? ' today' : ''}`;
+    const badge = document.createElement("button");
+    badge.className = `todo-due-date${isOverdue ? " overdue" : isToday ? " today" : ""}`;
     badge.textContent = formatDueDate(todo.dueDate);
     badge.title = `期日: ${todo.dueDate}（クリックで変更）`;
-    badge.addEventListener('click', (e) => {
+    badge.addEventListener("click", (e) => {
       e.stopPropagation();
       showDueDatePicker(todo.id, badge, todo.dueDate);
     });
     container.append(badge);
   } else {
-    const addBtn = document.createElement('button');
-    addBtn.className = 'todo-add-date';
-    addBtn.title = '期日を追加';
-    addBtn.setAttribute('aria-label', '期日を追加');
-    addBtn.textContent = '📅';
-    addBtn.addEventListener('click', (e) => {
+    const addBtn = document.createElement("button");
+    addBtn.className = "todo-add-date";
+    addBtn.title = "期日を追加";
+    addBtn.setAttribute("aria-label", "期日を追加");
+    addBtn.textContent = "📅";
+    addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       showDueDatePicker(todo.id, addBtn, undefined);
     });
@@ -584,26 +600,30 @@ function createDueDateElement(todo: DecryptedTodo): HTMLElement {
   return container;
 }
 
-function showDueDatePicker(todoId: string, anchor: HTMLElement, currentDate: string | undefined): void {
-  document.querySelector('.due-date-picker-popup')?.remove();
+function showDueDatePicker(
+  todoId: string,
+  anchor: HTMLElement,
+  currentDate: string | undefined,
+): void {
+  document.querySelector(".due-date-picker-popup")?.remove();
 
-  const popup = document.createElement('div');
-  popup.className = 'due-date-picker-popup';
+  const popup = document.createElement("div");
+  popup.className = "due-date-picker-popup";
 
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.value = currentDate ?? '';
+  const input = document.createElement("input");
+  input.type = "date";
+  input.value = currentDate ?? "";
 
-  const clearBtn = document.createElement('button');
-  clearBtn.className = 'btn-ghost btn-sm';
-  clearBtn.textContent = '期日を削除';
-  clearBtn.style.marginTop = '6px';
-  clearBtn.addEventListener('click', () => {
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn-ghost btn-sm";
+  clearBtn.textContent = "期日を削除";
+  clearBtn.style.marginTop = "6px";
+  clearBtn.addEventListener("click", () => {
     popup.remove();
     void setDueDate(todoId, null);
   });
 
-  input.addEventListener('change', () => {
+  input.addEventListener("change", () => {
     const val = input.value;
     popup.remove();
     if (val) void setDueDate(todoId, val);
@@ -615,9 +635,8 @@ function showDueDatePicker(todoId: string, anchor: HTMLElement, currentDate: str
   const rect = anchor.getBoundingClientRect();
   const popupH = 90;
   const spaceBelow = window.innerHeight - rect.bottom;
-  const top = spaceBelow > popupH
-    ? rect.bottom + window.scrollY + 4
-    : rect.top + window.scrollY - popupH - 4;
+  const top =
+    spaceBelow > popupH ? rect.bottom + window.scrollY + 4 : rect.top + window.scrollY - popupH - 4;
   popup.style.top = `${top}px`;
   popup.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 200)}px`;
 
@@ -626,10 +645,10 @@ function showDueDatePicker(todoId: string, anchor: HTMLElement, currentDate: str
     const closeHandler = (e: MouseEvent): void => {
       if (!popup.contains(e.target as Node)) {
         popup.remove();
-        document.removeEventListener('click', closeHandler);
+        document.removeEventListener("click", closeHandler);
       }
     };
-    document.addEventListener('click', closeHandler);
+    document.addEventListener("click", closeHandler);
   }, 0);
 }
 
@@ -649,16 +668,16 @@ async function setDueDate(id: string, date: string | null): Promise<void> {
 function openGCalLink(title: string, dueDate: string | undefined): void {
   const params = new URLSearchParams({ text: title });
   if (dueDate) {
-    const dateStr = dueDate.replace(/-/g, '');
-    const d = new Date(dueDate + 'T00:00:00');
+    const dateStr = dueDate.replace(/-/g, "");
+    const d = new Date(dueDate + "T00:00:00");
     d.setDate(d.getDate() + 1);
-    const nextStr = d.toISOString().slice(0, 10).replace(/-/g, '');
-    params.set('dates', `${dateStr}/${nextStr}`);
+    const nextStr = d.toISOString().slice(0, 10).replace(/-/g, "");
+    params.set("dates", `${dateStr}/${nextStr}`);
   }
   window.open(
     `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`,
-    '_blank',
-    'noopener,noreferrer'
+    "_blank",
+    "noopener,noreferrer",
   );
 }
 
@@ -666,13 +685,13 @@ function openGCalLink(title: string, dueDate: string | undefined): void {
 // ユーザー設定
 // ========================
 
-const SETTINGS_KEY = 'wa-todo-settings';
+const SETTINGS_KEY = "wa-todo-settings";
 
 function loadSettings(): void {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) as Partial<UserSettings> };
+      settings = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<UserSettings>) };
       settings.kanbanColumns = { ...DEFAULT_SETTINGS.kanbanColumns, ...settings.kanbanColumns };
     }
   } catch {
@@ -687,14 +706,14 @@ function saveSettings(): void {
 
 function applySettings(): void {
   const root = document.documentElement;
-  root.style.setProperty('--color-accent', settings.accentColor);
+  root.style.setProperty("--color-accent", settings.accentColor);
   // html 要素の font-size を変更することで rem 単位すべてに反映される
   const fontSize = FONT_SIZE_MAP[settings.fontSize];
-  root.style.setProperty('--font-size-base', fontSize);
+  root.style.setProperty("--font-size-base", fontSize);
   root.style.fontSize = fontSize;
   // ビュー切り替えボタンの状態更新
-  document.getElementById('view-list')?.classList.toggle('active', currentView === 'list');
-  document.getElementById('view-kanban')?.classList.toggle('active', currentView === 'kanban');
+  document.getElementById("view-list")?.classList.toggle("active", currentView === "list");
+  document.getElementById("view-kanban")?.classList.toggle("active", currentView === "kanban");
 }
 
 function setView(view: ViewMode): void {
@@ -706,12 +725,12 @@ function setView(view: ViewMode): void {
 }
 
 function toggleSettingsPanel(): void {
-  const panel = document.getElementById('settings-panel')!;
-  if (panel.style.display !== 'none') {
-    panel.style.display = 'none';
+  const panel = document.getElementById("settings-panel")!;
+  if (panel.style.display !== "none") {
+    panel.style.display = "none";
     return;
   }
-  panel.style.display = '';
+  panel.style.display = "";
   buildSettingsPanel(panel);
 }
 
@@ -719,44 +738,58 @@ function buildSettingsPanel(panel: HTMLElement): void {
   panel.replaceChildren();
 
   // ヘッダー
-  const header = document.createElement('div');
-  header.className = 'settings-header';
-  const title = document.createElement('span');
-  title.textContent = '設定';
-  title.className = 'settings-title';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'settings-close';
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+  const header = document.createElement("div");
+  header.className = "settings-header";
+  const title = document.createElement("span");
+  title.textContent = "設定";
+  title.className = "settings-title";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "settings-close";
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", () => {
+    panel.style.display = "none";
+  });
   header.append(title, closeBtn);
   panel.append(header);
 
   // 表示モード
-  const viewSection = createSettingsSection('表示モード');
-  viewSection.append(createSettingsChoices(
-    [['list', '☰ リスト'], ['kanban', '⬛ カンバン']],
-    currentView,
-    (v) => { setView(v); buildSettingsPanel(panel); }
-  ));
+  const viewSection = createSettingsSection("表示モード");
+  viewSection.append(
+    createSettingsChoices(
+      [
+        ["list", "☰ リスト"],
+        ["kanban", "⬛ カンバン"],
+      ],
+      currentView,
+      (v) => {
+        setView(v);
+        buildSettingsPanel(panel);
+      },
+    ),
+  );
   panel.append(viewSection);
 
   // カンバン列名
-  const colSection = createSettingsSection('カンバン列名');
-  const COL_LABELS: Record<KanbanStatus, string> = { todo: '未着手', doing: '進行中', done: '完了' };
+  const colSection = createSettingsSection("カンバン列名");
+  const COL_LABELS: Record<KanbanStatus, string> = {
+    todo: "未着手",
+    doing: "進行中",
+    done: "完了",
+  };
   for (const status of KANBAN_ORDER) {
-    const row = document.createElement('div');
-    row.className = 'settings-input-row';
-    const lbl = document.createElement('label');
-    lbl.className = 'settings-label';
+    const row = document.createElement("div");
+    row.className = "settings-input-row";
+    const lbl = document.createElement("label");
+    lbl.className = "settings-label";
     lbl.textContent = COL_LABELS[status];
-    const inp = document.createElement('input');
-    inp.type = 'text';
+    const inp = document.createElement("input");
+    inp.type = "text";
     inp.value = settings.kanbanColumns[status];
-    inp.className = 'settings-input';
-    inp.addEventListener('change', () => {
+    inp.className = "settings-input";
+    inp.addEventListener("change", () => {
       settings.kanbanColumns[status] = inp.value.trim() || DEFAULT_SETTINGS.kanbanColumns[status];
       saveSettings();
-      if (currentView === 'kanban') renderTodos(decryptedCache);
+      if (currentView === "kanban") renderTodos(decryptedCache);
     });
     row.append(lbl, inp);
     colSection.append(row);
@@ -764,15 +797,15 @@ function buildSettingsPanel(panel: HTMLElement): void {
   panel.append(colSection);
 
   // アクセントカラー
-  const colorSection = createSettingsSection('アクセントカラー');
-  const colorRow = document.createElement('div');
-  colorRow.className = 'settings-row settings-colors';
+  const colorSection = createSettingsSection("アクセントカラー");
+  const colorRow = document.createElement("div");
+  colorRow.className = "settings-row settings-colors";
   for (const color of ACCENT_PRESETS) {
-    const swatch = document.createElement('button');
-    swatch.className = `color-swatch${settings.accentColor === color ? ' active' : ''}`;
+    const swatch = document.createElement("button");
+    swatch.className = `color-swatch${settings.accentColor === color ? " active" : ""}`;
     swatch.style.background = color;
     swatch.title = color;
-    swatch.addEventListener('click', () => {
+    swatch.addEventListener("click", () => {
       settings.accentColor = color;
       saveSettings();
       applySettings();
@@ -784,20 +817,31 @@ function buildSettingsPanel(panel: HTMLElement): void {
   panel.append(colorSection);
 
   // フォントサイズ
-  const fontSection = createSettingsSection('フォントサイズ');
-  fontSection.append(createSettingsChoices(
-    [['sm', 'S 小'], ['md', 'M 中'], ['lg', 'L 大']] as [UserSettings['fontSize'], string][],
-    settings.fontSize,
-    (sz) => { settings.fontSize = sz; saveSettings(); applySettings(); buildSettingsPanel(panel); }
-  ));
+  const fontSection = createSettingsSection("フォントサイズ");
+  fontSection.append(
+    createSettingsChoices(
+      [
+        ["sm", "S 小"],
+        ["md", "M 中"],
+        ["lg", "L 大"],
+      ] as [UserSettings["fontSize"], string][],
+      settings.fontSize,
+      (sz) => {
+        settings.fontSize = sz;
+        saveSettings();
+        applySettings();
+        buildSettingsPanel(panel);
+      },
+    ),
+  );
   panel.append(fontSection);
 }
 
 function createSettingsSection(title: string): HTMLElement {
-  const section = document.createElement('div');
-  section.className = 'settings-section';
-  const h = document.createElement('div');
-  h.className = 'settings-section-title';
+  const section = document.createElement("div");
+  section.className = "settings-section";
+  const h = document.createElement("div");
+  h.className = "settings-section-title";
   h.textContent = title;
   section.append(h);
   return section;
@@ -806,15 +850,15 @@ function createSettingsSection(title: string): HTMLElement {
 function createSettingsChoices<T extends string>(
   options: [T, string][],
   current: T,
-  onChange: (val: T) => void
+  onChange: (val: T) => void,
 ): HTMLElement {
-  const row = document.createElement('div');
-  row.className = 'settings-row';
+  const row = document.createElement("div");
+  row.className = "settings-row";
   for (const [val, label] of options) {
-    const btn = document.createElement('button');
-    btn.className = `settings-choice${current === val ? ' active' : ''}`;
+    const btn = document.createElement("button");
+    btn.className = `settings-choice${current === val ? " active" : ""}`;
     btn.textContent = label;
-    btn.addEventListener('click', () => onChange(val));
+    btn.addEventListener("click", () => onChange(val));
     row.append(btn);
   }
   return row;
@@ -825,61 +869,65 @@ function createSettingsChoices<T extends string>(
 // ========================
 
 const GCAL_SVG_PATH =
-  'M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' +
-  'M5 19V8h14v11H5zm2-9h5v5H7z';
+  "M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z" +
+  "M5 19V8h14v11H5zm2-9h5v5H7z";
 
 function createGCalSvg(): SVGSVGElement {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('width', '13');
-  svg.setAttribute('height', '13');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'currentColor');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('d', GCAL_SVG_PATH);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", "13");
+  svg.setAttribute("height", "13");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "currentColor");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", GCAL_SVG_PATH);
   svg.appendChild(path);
   return svg;
 }
 
 function mkPriorityBadge(todo: DecryptedTodo, clickable: boolean): HTMLElement {
-  const priority = todo.priority ?? 'medium';
-  const el = document.createElement(clickable ? 'button' : 'span');
+  const priority = todo.priority ?? "medium";
+  const el = document.createElement(clickable ? "button" : "span");
   el.className = `todo-priority priority-${priority}`;
   el.textContent = PRIORITY_LABEL[priority];
   if (clickable) {
     el.title = PRIORITY_TITLE[priority];
-    el.addEventListener('click', () => { void cyclePriority(todo.id, priority); });
+    el.addEventListener("click", () => {
+      void cyclePriority(todo.id, priority);
+    });
   }
   return el;
 }
 
 function mkGCalBtn(todo: DecryptedTodo): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = 'todo-gcal-btn';
-  btn.title = 'Google Calendarに追加';
-  btn.setAttribute('aria-label', 'Google Calendarに追加');
+  const btn = document.createElement("button");
+  btn.className = "todo-gcal-btn";
+  btn.title = "Google Calendarに追加";
+  btn.setAttribute("aria-label", "Google Calendarに追加");
   btn.appendChild(createGCalSvg());
-  btn.addEventListener('click', () => openGCalLink(todo.title, todo.dueDate));
+  btn.addEventListener("click", () => openGCalLink(todo.title, todo.dueDate));
   return btn;
 }
 
 function mkNotesBtn(todo: DecryptedTodo, container: HTMLElement): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = `todo-notes-btn${todo.notes ? ' has-notes' : ''}`;
-  btn.title = todo.notes ? 'メモを編集' : 'メモを追加';
-  btn.setAttribute('aria-label', btn.title);
-  btn.textContent = '📝';
-  btn.addEventListener('click', () => toggleNotesPanel(todo.id, container, todo.notes));
+  const btn = document.createElement("button");
+  btn.className = `todo-notes-btn${todo.notes ? " has-notes" : ""}`;
+  btn.title = todo.notes ? "メモを編集" : "メモを追加";
+  btn.setAttribute("aria-label", btn.title);
+  btn.textContent = "📝";
+  btn.addEventListener("click", () => toggleNotesPanel(todo.id, container, todo.notes));
   return btn;
 }
 
 function mkDeleteBtn(todo: DecryptedTodo): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = 'btn-danger';
-  btn.title = '削除';
-  btn.textContent = '×';
-  btn.addEventListener('click', () => { void deleteTodo(todo.id); });
+  const btn = document.createElement("button");
+  btn.className = "btn-danger";
+  btn.title = "削除";
+  btn.textContent = "×";
+  btn.addEventListener("click", () => {
+    void deleteTodo(todo.id);
+  });
   return btn;
 }
 
@@ -889,40 +937,39 @@ function mkDeleteBtn(todo: DecryptedTodo): HTMLButtonElement {
 
 function getEffectiveStatus(todo: DecryptedTodo): KanbanStatus {
   if (todo.status) return todo.status;
-  return todo.completed ? 'done' : 'todo';
+  return todo.completed ? "done" : "todo";
 }
 
 function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
-
   const columns = KANBAN_ORDER.map((status) => {
-    const col = document.createElement('div');
-    col.className = 'kanban-col';
+    const col = document.createElement("div");
+    col.className = "kanban-col";
     col.dataset.status = status;
 
-    const header = document.createElement('div');
-    header.className = 'kanban-col-header';
-    const nameEl = document.createElement('span');
+    const header = document.createElement("div");
+    header.className = "kanban-col-header";
+    const nameEl = document.createElement("span");
     nameEl.textContent = settings.kanbanColumns[status];
-    const countEl = document.createElement('span');
+    const countEl = document.createElement("span");
     const colTodos = todos.filter((t) => getEffectiveStatus(t) === status);
     countEl.textContent = String(colTodos.length);
-    countEl.className = 'kanban-col-count';
+    countEl.className = "kanban-col-count";
     header.append(nameEl, countEl);
 
-    const body = document.createElement('div');
-    body.className = 'kanban-col-body';
+    const body = document.createElement("div");
+    body.className = "kanban-col-body";
     body.dataset.status = status;
 
     colTodos.forEach((todo) => body.append(renderKanbanCard(todo)));
 
     // + 追加ボタン（未着手列のみ）
-    if (status === 'todo') {
-      const addBtn = document.createElement('button');
-      addBtn.className = 'kanban-add-btn';
-      addBtn.textContent = '+ TODO追加';
-      addBtn.addEventListener('click', () => {
-        document.getElementById('new-todo-input')?.focus();
-        document.getElementById('todo-section')?.scrollIntoView({ behavior: 'smooth' });
+    if (status === "todo") {
+      const addBtn = document.createElement("button");
+      addBtn.className = "kanban-add-btn";
+      addBtn.textContent = "+ TODO追加";
+      addBtn.addEventListener("click", () => {
+        document.getElementById("new-todo-input")?.focus();
+        document.getElementById("todo-section")?.scrollIntoView({ behavior: "smooth" });
       });
       body.append(addBtn);
     }
@@ -936,29 +983,30 @@ function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
 }
 
 function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
-  const card = document.createElement('div');
-  card.className = 'kanban-card';
+  const card = document.createElement("div");
+  card.className = "kanban-card";
   card.dataset.id = todo.id;
   card.draggable = true;
 
-  const cardHeader = document.createElement('div');
-  cardHeader.className = 'kanban-card-header';
+  const cardHeader = document.createElement("div");
+  cardHeader.className = "kanban-card-header";
 
-  const titleEl = document.createElement('span');
-  titleEl.className = 'kanban-card-title';
+  const titleEl = document.createElement("span");
+  titleEl.className = "kanban-card-title";
   titleEl.textContent = todo.title;
-  titleEl.title = 'ダブルクリックで編集';
-  titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
+  titleEl.title = "ダブルクリックで編集";
+  titleEl.addEventListener("dblclick", () => startEditTodo(todo.id, todo.title));
 
   cardHeader.append(mkPriorityBadge(todo, false), titleEl);
 
-  const cardFooter = document.createElement('div');
-  cardFooter.className = 'kanban-card-footer';
+  const cardFooter = document.createElement("div");
+  cardFooter.className = "kanban-card-footer";
 
   if (todo.dueDate) {
     const today = new Date().toISOString().slice(0, 10);
-    const cls = todo.dueDate < today && !todo.completed ? ' overdue' : todo.dueDate === today ? ' today' : '';
-    const badge = document.createElement('span');
+    const cls =
+      todo.dueDate < today && !todo.completed ? " overdue" : todo.dueDate === today ? " today" : "";
+    const badge = document.createElement("span");
     badge.className = `todo-due-date${cls}`;
     badge.textContent = formatDueDate(todo.dueDate);
     cardFooter.append(badge);
@@ -972,31 +1020,35 @@ function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
 let kanbanDraggedId: string | null = null;
 
 function setupKanbanDnD(board: HTMLElement): void {
-  board.addEventListener('dragstart', (e) => {
-    const card = (e.target as HTMLElement).closest<HTMLElement>('.kanban-card');
+  board.addEventListener("dragstart", (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(".kanban-card");
     if (!card) return;
     kanbanDraggedId = card.dataset.id ?? null;
-    card.classList.add('dragging');
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    card.classList.add("dragging");
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   });
 
-  board.addEventListener('dragover', (e) => {
+  board.addEventListener("dragover", (e) => {
     e.preventDefault();
-    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
+    const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
     if (!col) return;
-    board.querySelectorAll('.kanban-col-body.drag-over').forEach((el) => el.classList.remove('drag-over'));
-    col.classList.add('drag-over');
+    board
+      .querySelectorAll(".kanban-col-body.drag-over")
+      .forEach((el) => el.classList.remove("drag-over"));
+    col.classList.add("drag-over");
   });
 
-  board.addEventListener('dragleave', (e) => {
-    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
-    if (col && !col.contains(e.relatedTarget as Node)) col.classList.remove('drag-over');
+  board.addEventListener("dragleave", (e) => {
+    const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
+    if (col && !col.contains(e.relatedTarget as Node)) col.classList.remove("drag-over");
   });
 
-  board.addEventListener('drop', (e) => {
+  board.addEventListener("drop", (e) => {
     e.preventDefault();
-    board.querySelectorAll('.dragging, .drag-over').forEach((el) => el.classList.remove('dragging', 'drag-over'));
-    const col = (e.target as HTMLElement).closest<HTMLElement>('.kanban-col-body');
+    board
+      .querySelectorAll(".dragging, .drag-over")
+      .forEach((el) => el.classList.remove("dragging", "drag-over"));
+    const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
     const newStatus = col?.dataset.status as KanbanStatus | undefined;
     const id = kanbanDraggedId;
     kanbanDraggedId = null;
@@ -1004,15 +1056,95 @@ function setupKanbanDnD(board: HTMLElement): void {
     void moveToKanbanColumn(id, newStatus);
   });
 
-  board.addEventListener('dragend', () => {
-    board.querySelectorAll('.dragging, .drag-over').forEach((el) => el.classList.remove('dragging', 'drag-over'));
+  board.addEventListener("dragend", () => {
+    board
+      .querySelectorAll(".dragging, .drag-over")
+      .forEach((el) => el.classList.remove("dragging", "drag-over"));
     kanbanDraggedId = null;
   });
+
+  // タッチデバイス用カンバンDnD
+  let touchKanbanId: string | null = null;
+  let kanbanGhost: HTMLElement | null = null;
+
+  function cleanupKanbanTouch(): void {
+    kanbanGhost?.remove();
+    kanbanGhost = null;
+    board
+      .querySelectorAll(".dragging, .drag-over")
+      .forEach((el) => el.classList.remove("dragging", "drag-over"));
+    touchKanbanId = null;
+  }
+
+  board.addEventListener(
+    "touchstart",
+    (e) => {
+      const card = (e.target as HTMLElement).closest<HTMLElement>(".kanban-card");
+      if (!card) return;
+      touchKanbanId = card.dataset.id ?? null;
+
+      const rect = card.getBoundingClientRect();
+      const clone = card.cloneNode(true) as HTMLElement;
+      clone.style.cssText = [
+        `position:fixed`,
+        `left:${rect.left}px`,
+        `top:${rect.top}px`,
+        `width:${rect.width}px`,
+        `opacity:0.75`,
+        `pointer-events:none`,
+        `z-index:9999`,
+        `transform:scale(1.03)`,
+        `box-shadow:0 8px 24px rgba(0,0,0,0.2)`,
+      ].join(";");
+      document.body.appendChild(clone);
+      kanbanGhost = clone;
+      card.classList.add("dragging");
+    },
+    { passive: true },
+  );
+
+  board.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!touchKanbanId || !kanbanGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const w = kanbanGhost.getBoundingClientRect().width;
+      kanbanGhost.style.left = `${touch.clientX - w / 2}px`;
+      kanbanGhost.style.top = `${touch.clientY - 24}px`;
+
+      kanbanGhost.style.display = "none";
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      kanbanGhost.style.display = "";
+
+      board
+        .querySelectorAll(".kanban-col-body.drag-over")
+        .forEach((node) => node.classList.remove("drag-over"));
+      const col = (el as HTMLElement)?.closest<HTMLElement>(".kanban-col-body");
+      if (col) col.classList.add("drag-over");
+    },
+    { passive: false },
+  );
+
+  board.addEventListener("touchend", (e) => {
+    if (!touchKanbanId) return;
+    const id = touchKanbanId;
+    const touch = e.changedTouches[0];
+    cleanupKanbanTouch();
+
+    kanbanGhost?.remove();
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const col = (el as HTMLElement)?.closest<HTMLElement>(".kanban-col-body");
+    const newStatus = col?.dataset.status as KanbanStatus | undefined;
+    if (id && newStatus) void moveToKanbanColumn(id, newStatus);
+  });
+
+  board.addEventListener("touchcancel", cleanupKanbanTouch);
 }
 
 async function moveToKanbanColumn(id: string, newStatus: KanbanStatus): Promise<void> {
   try {
-    await patchTodo(id, { status: newStatus, completed: newStatus === 'done' });
+    await patchTodo(id, { status: newStatus, completed: newStatus === "done" });
   } catch (err: unknown) {
     alert((err as Error).message);
   }
@@ -1038,8 +1170,12 @@ function closeEditorForTodo(todoId: string): void {
   openEditors.delete(todoId);
 }
 
-function toggleNotesPanel(todoId: string, wrapper: HTMLElement, currentNotes: string | undefined): void {
-  const existing = wrapper.querySelector('.todo-notes-panel');
+function toggleNotesPanel(
+  todoId: string,
+  wrapper: HTMLElement,
+  currentNotes: string | undefined,
+): void {
+  const existing = wrapper.querySelector(".todo-notes-panel");
   if (existing) {
     closeEditorForTodo(todoId);
     existing.remove();
@@ -1048,51 +1184,79 @@ function toggleNotesPanel(todoId: string, wrapper: HTMLElement, currentNotes: st
   openNotesPanel(todoId, wrapper, currentNotes);
 }
 
-function openNotesPanel(todoId: string, wrapper: HTMLElement, initialNotes: string | undefined): void {
+function openNotesPanel(
+  todoId: string,
+  wrapper: HTMLElement,
+  initialNotes: string | undefined,
+): void {
   closeEditorForTodo(todoId);
 
-  const panel = document.createElement('div');
-  panel.className = 'todo-notes-panel';
+  const panel = document.createElement("div");
+  panel.className = "todo-notes-panel";
 
   // ツールバー
-  const toolbar = document.createElement('div');
-  toolbar.className = 'lexical-toolbar';
+  const toolbar = document.createElement("div");
+  toolbar.className = "lexical-toolbar";
 
   const toolbarDefs: { label: string; title: string; action: (ed: LexicalEditor) => void }[] = [
-    { label: 'B', title: '太字 (Ctrl+B)', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold') },
-    { label: 'I', title: 'イタリック (Ctrl+I)', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic') },
-    { label: 'S', title: '取り消し線', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough') },
-    { label: '<>', title: 'コード', action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, 'code') },
-    { label: '• リスト', title: '箇条書き', action: (ed) => ed.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined) },
-    { label: '1. リスト', title: '番号付きリスト', action: (ed) => ed.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined) },
+    {
+      label: "B",
+      title: "太字 (Ctrl+B)",
+      action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, "bold"),
+    },
+    {
+      label: "I",
+      title: "イタリック (Ctrl+I)",
+      action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, "italic"),
+    },
+    {
+      label: "S",
+      title: "取り消し線",
+      action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough"),
+    },
+    {
+      label: "<>",
+      title: "コード",
+      action: (ed) => ed.dispatchCommand(FORMAT_TEXT_COMMAND, "code"),
+    },
+    {
+      label: "• リスト",
+      title: "箇条書き",
+      action: (ed) => ed.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined),
+    },
+    {
+      label: "1. リスト",
+      title: "番号付きリスト",
+      action: (ed) => ed.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined),
+    },
   ];
 
   const toolbarBtnEls: HTMLButtonElement[] = [];
   for (const def of toolbarDefs) {
-    const btn = document.createElement('button');
-    btn.className = 'lexical-toolbar-btn';
+    const btn = document.createElement("button");
+    btn.className = "lexical-toolbar-btn";
     btn.textContent = def.label;
     btn.title = def.title;
-    btn.type = 'button';
+    btn.type = "button";
     toolbarBtnEls.push(btn);
     toolbar.append(btn);
   }
 
-  const sep = document.createElement('span');
-  sep.className = 'lexical-toolbar-sep';
+  const sep = document.createElement("span");
+  sep.className = "lexical-toolbar-sep";
   toolbar.append(sep);
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'lexical-toolbar-btn lexical-close-btn';
-  closeBtn.textContent = '✕';
-  closeBtn.title = '閉じる';
-  closeBtn.type = 'button';
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "lexical-toolbar-btn lexical-close-btn";
+  closeBtn.textContent = "✕";
+  closeBtn.title = "閉じる";
+  closeBtn.type = "button";
   toolbar.append(closeBtn);
 
   // エディタ領域
-  const editorEl = document.createElement('div');
-  editorEl.className = 'lexical-editor';
-  editorEl.setAttribute('spellcheck', 'false');
+  const editorEl = document.createElement("div");
+  editorEl.className = "lexical-editor";
+  editorEl.setAttribute("spellcheck", "false");
 
   panel.append(toolbar, editorEl);
   wrapper.append(panel);
@@ -1102,13 +1266,15 @@ function openNotesPanel(todoId: string, wrapper: HTMLElement, initialNotes: stri
     namespace: `todo-notes-${todoId}`,
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode],
     theme: {
-      paragraph: 'lp',
-      heading: { h1: 'lh1', h2: 'lh2' },
-      text: { bold: 'lb', italic: 'li', strikethrough: 'ls', code: 'lc' },
-      list: { ul: 'lul', ol: 'lol', listitem: 'lli', nested: { listitem: 'lli-nested' } },
-      quote: 'lq',
+      paragraph: "lp",
+      heading: { h1: "lh1", h2: "lh2" },
+      text: { bold: "lb", italic: "li", strikethrough: "ls", code: "lc" },
+      list: { ul: "lul", ol: "lol", listitem: "lli", nested: { listitem: "lli-nested" } },
+      quote: "lq",
     },
-    onError: (err) => { console.error('Lexical error:', err); },
+    onError: (err) => {
+      console.error("Lexical error:", err);
+    },
   });
 
   editor.setRootElement(editorEl);
@@ -1131,27 +1297,29 @@ function openNotesPanel(todoId: string, wrapper: HTMLElement, initialNotes: stri
   for (let i = 0; i < toolbarDefs.length; i++) {
     const def = toolbarDefs[i];
     const btn = toolbarBtnEls[i];
-    btn.addEventListener('mousedown', (e) => {
+    btn.addEventListener("mousedown", (e) => {
       e.preventDefault(); // エディタのfocusを維持
       def.action(editor);
     });
   }
 
-  closeBtn.addEventListener('click', () => {
+  closeBtn.addEventListener("click", () => {
     closeEditorForTodo(todoId);
     panel.remove();
   });
 
   // 自動保存（800ms debounce）
   let saveTimeout: number | null = null;
-  const unregUpdate = editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
-    if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
-    if (saveTimeout !== null) clearTimeout(saveTimeout);
-    saveTimeout = window.setTimeout(() => {
-      const json = JSON.stringify(editorState.toJSON());
-      void saveNotes(todoId, json);
-    }, 800);
-  });
+  const unregUpdate = editor.registerUpdateListener(
+    ({ editorState, dirtyElements, dirtyLeaves }) => {
+      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+      if (saveTimeout !== null) clearTimeout(saveTimeout);
+      saveTimeout = window.setTimeout(() => {
+        const json = JSON.stringify(editorState.toJSON());
+        void saveNotes(todoId, json);
+      }, 800);
+    },
+  );
 
   openEditors.set(todoId, {
     editor,
@@ -1160,7 +1328,9 @@ function openNotesPanel(todoId: string, wrapper: HTMLElement, initialNotes: stri
       unregHistory,
       unregList,
       unregUpdate,
-      () => { if (saveTimeout !== null) clearTimeout(saveTimeout); },
+      () => {
+        if (saveTimeout !== null) clearTimeout(saveTimeout);
+      },
     ],
   });
 
@@ -1175,8 +1345,8 @@ async function saveNotes(id: string, notesJson: string): Promise<void> {
     const data = await decryptTodo(todo.encrypted_data, todo.iv);
     const { encrypted_data, iv } = await encryptTodo({ ...data, notes: notesJson });
     const res = await fetch(`/api/todos/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ encrypted_data, iv }),
     });
     if (!res.ok) return;
@@ -1184,7 +1354,7 @@ async function saveNotes(id: string, notesJson: string): Promise<void> {
     const dec = decryptedCache.find((t) => t.id === id);
     if (dec) dec.notes = notesJson;
   } catch (err) {
-    console.error('メモ保存エラー:', err);
+    console.error("メモ保存エラー:", err);
   }
 }
 
@@ -1196,54 +1366,143 @@ function setupDragAndDrop(listEl: HTMLElement): void {
   // mousedown で drag-handle からの操作かを記録する
   // （dragstart の e.target は draggable 要素自体になるため直接チェック不可）
   let dragFromHandle = false;
-  listEl.addEventListener('mousedown', (e) => {
-    dragFromHandle = !!(e.target as HTMLElement).closest('.drag-handle');
+  listEl.addEventListener("mousedown", (e) => {
+    dragFromHandle = !!(e.target as HTMLElement).closest(".drag-handle");
   });
 
-  listEl.addEventListener('dragstart', (e) => {
-    if (!dragFromHandle) { e.preventDefault(); return; }
-    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+  listEl.addEventListener("dragstart", (e) => {
+    if (!dragFromHandle) {
+      e.preventDefault();
+      return;
+    }
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
     if (!wrapper) return;
     draggedId = wrapper.dataset.id ?? null;
-    wrapper.classList.add('dragging');
+    wrapper.classList.add("dragging");
     if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', draggedId ?? '');
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", draggedId ?? "");
     }
   });
 
-  listEl.addEventListener('dragover', (e) => {
+  listEl.addEventListener("dragover", (e) => {
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
     if (!wrapper || wrapper.dataset.id === draggedId) return;
-    listEl.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
-    wrapper.classList.add('drag-over');
+    listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+    wrapper.classList.add("drag-over");
     dragOverId = wrapper.dataset.id ?? null;
   });
 
-  listEl.addEventListener('dragleave', (e) => {
-    const wrapper = (e.target as HTMLElement).closest<HTMLElement>('.todo-wrapper');
+  listEl.addEventListener("dragleave", (e) => {
+    const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
     if (wrapper && !wrapper.contains(e.relatedTarget as Node)) {
-      wrapper.classList.remove('drag-over');
+      wrapper.classList.remove("drag-over");
     }
   });
 
-  listEl.addEventListener('drop', (e) => {
+  listEl.addEventListener("drop", (e) => {
     e.preventDefault();
-    listEl.querySelectorAll('.dragging, .drag-over').forEach((el) => {
-      el.classList.remove('dragging', 'drag-over');
+    listEl.querySelectorAll(".dragging, .drag-over").forEach((el) => {
+      el.classList.remove("dragging", "drag-over");
     });
     void handleDrop();
   });
 
-  listEl.addEventListener('dragend', () => {
-    listEl.querySelectorAll('.dragging, .drag-over').forEach((el) => {
-      el.classList.remove('dragging', 'drag-over');
+  listEl.addEventListener("dragend", () => {
+    listEl.querySelectorAll(".dragging, .drag-over").forEach((el) => {
+      el.classList.remove("dragging", "drag-over");
     });
     draggedId = null;
     dragOverId = null;
   });
+}
+
+// タッチデバイス用リストDnD
+function setupTouchDnD(listEl: HTMLElement): void {
+  let touchDragId: string | null = null;
+  let touchOverId: string | null = null;
+  let ghostEl: HTMLElement | null = null;
+
+  function cleanupTouch(): void {
+    ghostEl?.remove();
+    ghostEl = null;
+    listEl
+      .querySelectorAll(".dragging, .drag-over")
+      .forEach((el) => el.classList.remove("dragging", "drag-over"));
+    touchDragId = null;
+    touchOverId = null;
+  }
+
+  listEl.addEventListener(
+    "touchstart",
+    (e) => {
+      const handle = (e.target as HTMLElement).closest(".drag-handle");
+      if (!handle) return;
+      const wrapper = handle.closest<HTMLElement>(".todo-wrapper");
+      if (!wrapper) return;
+      touchDragId = wrapper.dataset.id ?? null;
+
+      const rect = wrapper.getBoundingClientRect();
+      const clone = wrapper.cloneNode(true) as HTMLElement;
+      clone.style.cssText = [
+        `position:fixed`,
+        `left:${rect.left}px`,
+        `top:${rect.top}px`,
+        `width:${rect.width}px`,
+        `opacity:0.75`,
+        `pointer-events:none`,
+        `z-index:9999`,
+        `transform:scale(1.03)`,
+        `box-shadow:0 8px 24px rgba(0,0,0,0.2)`,
+      ].join(";");
+      document.body.appendChild(clone);
+      ghostEl = clone;
+      wrapper.classList.add("dragging");
+    },
+    { passive: true },
+  );
+
+  listEl.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!touchDragId || !ghostEl) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const w = ghostEl.getBoundingClientRect().width;
+      ghostEl.style.left = `${touch.clientX - w / 2}px`;
+      ghostEl.style.top = `${touch.clientY - 24}px`;
+
+      ghostEl.style.display = "none";
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      ghostEl.style.display = "";
+
+      listEl.querySelectorAll(".drag-over").forEach((node) => node.classList.remove("drag-over"));
+      const wrapper = (el as HTMLElement)?.closest<HTMLElement>(".todo-wrapper");
+      if (wrapper && wrapper.dataset.id !== touchDragId) {
+        wrapper.classList.add("drag-over");
+        touchOverId = wrapper.dataset.id ?? null;
+      } else {
+        touchOverId = null;
+      }
+    },
+    { passive: false },
+  );
+
+  listEl.addEventListener("touchend", () => {
+    if (!touchDragId) return;
+    const fromId = touchDragId;
+    const toId = touchOverId;
+    cleanupTouch();
+    if (fromId && toId && fromId !== toId) {
+      draggedId = fromId;
+      dragOverId = toId;
+      void handleDrop();
+    }
+  });
+
+  listEl.addEventListener("touchcancel", cleanupTouch);
 }
 
 async function handleDrop(): Promise<void> {
@@ -1272,12 +1531,12 @@ async function handleDrop(): Promise<void> {
   renderTodos(decryptedCache);
 
   try {
-    const res = await fetch('/api/todos/reorder', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/todos/reorder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: newIds }),
     });
-    if (!res.ok) throw new Error('並び替えに失敗しましたわ');
+    if (!res.ok) throw new Error("並び替えに失敗しましたわ");
   } catch (err: unknown) {
     alert((err as Error).message);
     await loadTodos();
@@ -1289,57 +1548,69 @@ async function handleDrop(): Promise<void> {
 // ========================
 
 function renderTodoItem(todo: DecryptedTodo): HTMLElement {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'todo-wrapper';
+  const wrapper = document.createElement("div");
+  wrapper.className = "todo-wrapper";
   wrapper.dataset.id = todo.id;
   wrapper.draggable = true;
 
-  const item = document.createElement('div');
-  item.className = `todo-item${todo.completed ? ' completed' : ''}`;
+  const item = document.createElement("div");
+  item.className = `todo-item${todo.completed ? " completed" : ""}`;
   item.dataset.id = todo.id;
 
   // ドラッグハンドル
-  const dragHandle = document.createElement('span');
-  dragHandle.className = 'drag-handle';
-  dragHandle.setAttribute('aria-hidden', 'true');
-  dragHandle.textContent = '⠿';
-  dragHandle.title = 'ドラッグで並び替え';
+  const dragHandle = document.createElement("span");
+  dragHandle.className = "drag-handle";
+  dragHandle.setAttribute("aria-hidden", "true");
+  dragHandle.textContent = "⠿";
+  dragHandle.title = "ドラッグで並び替え";
 
   // チェックボックス
-  const checkbox = document.createElement('button');
-  checkbox.className = 'todo-checkbox';
-  checkbox.title = todo.completed ? '未完了に戻す' : '完了にする';
-  checkbox.textContent = todo.completed ? '✓' : '';
-  checkbox.addEventListener('click', () => { void toggleTodo(todo.id, !todo.completed); });
+  const checkbox = document.createElement("button");
+  checkbox.className = "todo-checkbox";
+  checkbox.title = todo.completed ? "未完了に戻す" : "完了にする";
+  checkbox.textContent = todo.completed ? "✓" : "";
+  checkbox.addEventListener("click", () => {
+    void toggleTodo(todo.id, !todo.completed);
+  });
 
   // タイトル
-  const titleEl = document.createElement('span');
-  titleEl.className = 'todo-title';
+  const titleEl = document.createElement("span");
+  titleEl.className = "todo-title";
   titleEl.textContent = todo.title;
-  titleEl.title = 'ダブルクリックで編集';
-  titleEl.addEventListener('dblclick', () => startEditTodo(todo.id, todo.title));
+  titleEl.title = "ダブルクリックで編集";
+  titleEl.addEventListener("dblclick", () => startEditTodo(todo.id, todo.title));
 
-  item.append(dragHandle, checkbox, mkPriorityBadge(todo, true), titleEl,
-    createDueDateElement(todo), mkGCalBtn(todo), mkNotesBtn(todo, wrapper), mkDeleteBtn(todo));
+  item.append(
+    dragHandle,
+    checkbox,
+    mkPriorityBadge(todo, true),
+    titleEl,
+    createDueDateElement(todo),
+    mkGCalBtn(todo),
+    mkNotesBtn(todo, wrapper),
+    mkDeleteBtn(todo),
+  );
   wrapper.append(item);
   return wrapper;
 }
 
 function renderTodos(todos: DecryptedTodo[]): void {
-  const listEl = document.getElementById('todo-list')!;
-  const countEl = document.getElementById('todo-count')!;
-  const clearWrap = document.getElementById('clear-completed-wrap')!;
+  const listEl = document.getElementById("todo-list")!;
+  const countEl = document.getElementById("todo-count")!;
+  const clearWrap = document.getElementById("clear-completed-wrap")!;
 
   const searched = applySearch(todos);
   const done = searched.filter((t) => t.completed).length;
   countEl.textContent = searchQuery
     ? `${searched.length} 件一致`
-    : todos.length === 0 ? '' : `${done} / ${todos.length} 完了`;
-  clearWrap.style.display = done > 0 && currentView === 'list' && !searchQuery ? '' : 'none';
+    : todos.length === 0
+      ? ""
+      : `${done} / ${todos.length} 完了`;
+  clearWrap.style.display = done > 0 && currentView === "list" && !searchQuery ? "" : "none";
 
-  listEl.className = currentView === 'kanban' ? 'todo-list kanban-board' : 'todo-list';
+  listEl.className = currentView === "kanban" ? "todo-list kanban-board" : "todo-list";
 
-  if (currentView === 'kanban') {
+  if (currentView === "kanban") {
     renderKanban(searched, listEl);
     return;
   }
@@ -1347,15 +1618,15 @@ function renderTodos(todos: DecryptedTodo[]): void {
   const filtered = applyFilter(searched);
 
   if (filtered.length === 0) {
-    const icon = document.createElement('div');
-    icon.className = 'empty-icon';
-    icon.textContent = searchQuery ? '🔍' : '📝';
-    const msg = document.createElement('p');
+    const icon = document.createElement("div");
+    icon.className = "empty-icon";
+    icon.textContent = searchQuery ? "🔍" : "📝";
+    const msg = document.createElement("p");
     msg.textContent = searchQuery
       ? `"${searchQuery}" に一致するTODOはありませんわ`
       : EMPTY_MESSAGES[currentFilter];
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
     empty.append(icon, msg);
     listEl.replaceChildren(empty);
     return;
@@ -1365,19 +1636,19 @@ function renderTodos(todos: DecryptedTodo[]): void {
 }
 
 async function addTodo(): Promise<void> {
-  const input = document.getElementById('new-todo-input') as HTMLInputElement;
+  const input = document.getElementById("new-todo-input") as HTMLInputElement;
   const title = input.value.trim();
   if (!title) return;
 
   try {
     const { encrypted_data, iv } = await encryptTodo({ title, completed: false });
-    const res = await fetch('/api/todos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ encrypted_data, iv }),
     });
-    if (!res.ok) throw new Error('追加に失敗しましたわ');
-    input.value = '';
+    if (!res.ok) throw new Error("追加に失敗しましたわ");
+    input.value = "";
     await loadTodos();
   } catch (err: unknown) {
     alert((err as Error).message);
@@ -1385,18 +1656,26 @@ async function addTodo(): Promise<void> {
 }
 
 async function toggleTodo(id: string, completed: boolean): Promise<void> {
-  try { await patchTodo(id, { completed }); } catch (err: unknown) { alert((err as Error).message); }
+  try {
+    await patchTodo(id, { completed });
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
 }
 
 async function cyclePriority(id: string, current: Priority): Promise<void> {
-  try { await patchTodo(id, { priority: PRIORITY_NEXT[current] }); } catch (err: unknown) { alert((err as Error).message); }
+  try {
+    await patchTodo(id, { priority: PRIORITY_NEXT[current] });
+  } catch (err: unknown) {
+    alert((err as Error).message);
+  }
 }
 
 async function deleteTodo(id: string): Promise<void> {
-  if (!confirm('このTODOを削除しますわよ？')) return;
+  if (!confirm("このTODOを削除しますわよ？")) return;
   try {
-    const res = await fetch(`/api/todos/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('削除に失敗しましたわ');
+    const res = await fetch(`/api/todos/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("削除に失敗しましたわ");
     await loadTodos();
   } catch (err: unknown) {
     alert((err as Error).message);
@@ -1411,13 +1690,13 @@ function startEditTodo(id: string, currentTitle: string): void {
   const item = document.querySelector<HTMLElement>(`.todo-item[data-id="${id}"]`);
   if (!item) return;
 
-  const titleEl = item.querySelector<HTMLElement>('.todo-title');
+  const titleEl = item.querySelector<HTMLElement>(".todo-title");
   if (!titleEl) return;
 
-  const input = document.createElement('input');
-  input.type = 'text';
+  const input = document.createElement("input");
+  input.type = "text";
   input.value = currentTitle;
-  input.className = 'todo-edit-input';
+  input.className = "todo-edit-input";
   titleEl.replaceWith(input);
   input.focus();
   input.select();
@@ -1439,17 +1718,17 @@ function startEditTodo(id: string, currentTitle: string): void {
     }
   };
 
-  input.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
       e.preventDefault();
       input.blur();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       cancelled = true;
       await loadTodos();
     }
   });
 
-  input.addEventListener('blur', save);
+  input.addEventListener("blur", save);
 }
 
 async function updateTodoTitle(id: string, newTitle: string): Promise<void> {
@@ -1462,8 +1741,8 @@ async function updateTodoTitle(id: string, newTitle: string): Promise<void> {
 
 function setFilter(filter: Filter): void {
   currentFilter = filter;
-  document.querySelectorAll('.filter-btn').forEach((btn) => btn.classList.remove('active'));
-  document.getElementById(`filter-${filter}`)?.classList.add('active');
+  document.querySelectorAll(".filter-btn").forEach((btn) => btn.classList.remove("active"));
+  document.getElementById(`filter-${filter}`)?.classList.add("active");
   renderTodos(decryptedCache);
 }
 
@@ -1479,9 +1758,9 @@ async function clearCompleted(): Promise<void> {
   try {
     await Promise.all(
       completedIds.map(async (id) => {
-        const res = await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/todos/${id}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`削除に失敗しましたわ (${id})`);
-      })
+      }),
     );
     await loadTodos();
   } catch (err: unknown) {
@@ -1495,25 +1774,25 @@ async function clearCompleted(): Promise<void> {
 
 function showPrivacyPolicy(e?: Event): void {
   e?.preventDefault();
-  const modal = document.getElementById('privacy-modal')!;
-  modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
+  const modal = document.getElementById("privacy-modal")!;
+  modal.style.display = "flex";
+  document.body.style.overflow = "hidden";
 }
 
 function hidePrivacyPolicy(e?: Event): void {
-  if (e && e.target !== document.getElementById('privacy-modal')) return;
-  const modal = document.getElementById('privacy-modal')!;
-  modal.style.display = 'none';
-  document.body.style.overflow = '';
+  if (e && e.target !== document.getElementById("privacy-modal")) return;
+  const modal = document.getElementById("privacy-modal")!;
+  modal.style.display = "none";
+  document.body.style.overflow = "";
 }
 
 // Escキーでモーダルを閉じる
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const modal = document.getElementById('privacy-modal')!;
-    if (modal.style.display !== 'none') {
-      modal.style.display = 'none';
-      document.body.style.overflow = '';
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = document.getElementById("privacy-modal")!;
+    if (modal.style.display !== "none") {
+      modal.style.display = "none";
+      document.body.style.overflow = "";
     }
   }
 });
@@ -1522,7 +1801,7 @@ document.addEventListener('keydown', (e) => {
 // UIユーティリティ
 // ========================
 
-function showMessage(id: string, text: string, type: 'error' | 'success' | 'warning'): void {
+function showMessage(id: string, text: string, type: "error" | "success" | "warning"): void {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = text;
@@ -1532,8 +1811,8 @@ function showMessage(id: string, text: string, type: 'error' | 'success' | 'warn
 function clearMessage(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
-  el.textContent = '';
-  el.className = 'message';
+  el.textContent = "";
+  el.className = "message";
 }
 
 // ========================
@@ -1542,7 +1821,7 @@ function clearMessage(id: string): void {
 
 function bufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  let str = '';
+  let str = "";
   for (const byte of bytes) str += String.fromCharCode(byte);
   return btoa(str);
 }
@@ -1555,9 +1834,9 @@ function base64ToBuffer(b64: string): ArrayBuffer {
 }
 
 function base64urlToBuffer(b64url: string): ArrayBuffer {
-  const padded = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64url.replace(/-/g, "+").replace(/_/g, "/");
   const pad = padded.length % 4;
-  return base64ToBuffer(pad ? padded + '='.repeat(4 - pad) : padded);
+  return base64ToBuffer(pad ? padded + "=".repeat(4 - pad) : padded);
 }
 
 // ========================
@@ -1566,7 +1845,7 @@ function base64urlToBuffer(b64url: string): ArrayBuffer {
 
 declare global {
   interface Window {
-    switchTab: (tab: 'login' | 'register') => void;
+    switchTab: (tab: "login" | "register") => void;
     loginHandler: () => void;
     registerHandler: () => void;
     unlockHandler: () => void;
@@ -1602,9 +1881,9 @@ window.setSearch = setSearch;
 // Service Worker 登録
 // ========================
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
       // SWの登録失敗は非クリティカル（PWA機能なしで動作続行）
     });
   });
