@@ -166,6 +166,26 @@ function showUnlockSection(username: string): void {
   document.getElementById("logout-btn")!.style.display = "";
 }
 
+let dndSetupDone = false;
+
+function createDragGhost(source: HTMLElement): HTMLElement {
+  const rect = source.getBoundingClientRect();
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.style.cssText = [
+    "position:fixed",
+    `left:${rect.left}px`,
+    `top:${rect.top}px`,
+    `width:${rect.width}px`,
+    "opacity:0.75",
+    "pointer-events:none",
+    "z-index:9999",
+    "transform:scale(1.03)",
+    "box-shadow:0 8px 24px rgba(0,0,0,0.2)",
+  ].join(";");
+  document.body.appendChild(clone);
+  return clone;
+}
+
 function showTodoSection(username: string): void {
   hideAll();
   document.getElementById("todo-section")!.style.display = "";
@@ -174,11 +194,13 @@ function showTodoSection(username: string): void {
   document.getElementById("lock-icon")!.textContent = "🔓";
   document.getElementById("lock-label")!.textContent = username;
   document.getElementById("logout-btn")!.style.display = "";
-  // DnDはイベント委譲なので一度だけ設定すればよい
-  const dndEl = document.getElementById("todo-list")!;
-  setupDragAndDrop(dndEl);
-  setupTouchDnD(dndEl);
-  setupKanbanDnD(dndEl);
+  if (!dndSetupDone) {
+    dndSetupDone = true;
+    const dndEl = document.getElementById("todo-list")!;
+    setupDragAndDrop(dndEl);
+    setupTouchDnD(dndEl);
+    setupKanbanDnD(dndEl);
+  }
 }
 
 // ========================
@@ -616,18 +638,27 @@ function showDueDatePicker(
   input.type = "date";
   input.value = currentDate ?? "";
 
+  let closeHandler: ((e: MouseEvent) => void) | null = null;
+  function dismissPopup(): void {
+    popup.remove();
+    if (closeHandler) {
+      document.removeEventListener("click", closeHandler);
+      closeHandler = null;
+    }
+  }
+
   const clearBtn = document.createElement("button");
   clearBtn.className = "btn-ghost btn-sm";
   clearBtn.textContent = "期日を削除";
   clearBtn.style.marginTop = "6px";
   clearBtn.addEventListener("click", () => {
-    popup.remove();
+    dismissPopup();
     void setDueDate(todoId, null);
   });
 
   input.addEventListener("change", () => {
     const val = input.value;
-    popup.remove();
+    dismissPopup();
     if (val) void setDueDate(todoId, val);
   });
 
@@ -644,11 +675,8 @@ function showDueDatePicker(
 
   setTimeout(() => {
     input.focus();
-    const closeHandler = (e: MouseEvent): void => {
-      if (!popup.contains(e.target as Node)) {
-        popup.remove();
-        document.removeEventListener("click", closeHandler);
-      }
+    closeHandler = (e: MouseEvent): void => {
+      if (!popup.contains(e.target as Node)) dismissPopup();
     };
     document.addEventListener("click", closeHandler);
   }, 0);
@@ -943,6 +971,7 @@ function getEffectiveStatus(todo: DecryptedTodo): KanbanStatus {
 }
 
 function renderKanban(todos: DecryptedTodo[], container: HTMLElement): void {
+  closeAllEditors();
   const columns = KANBAN_ORDER.map((status) => {
     const col = document.createElement("div");
     col.className = "kanban-col";
@@ -1021,10 +1050,22 @@ function renderKanbanCard(todo: DecryptedTodo): HTMLElement {
 let kanbanDraggedId: string | null = null;
 
 function setupKanbanDnD(board: HTMLElement): void {
+  let kanbanDraggedCard: HTMLElement | null = null;
+  let kanbanDragOverCol: HTMLElement | null = null;
+
+  function clearKanbanDragState(): void {
+    kanbanDraggedCard?.classList.remove("dragging");
+    kanbanDragOverCol?.classList.remove("drag-over");
+    kanbanDraggedCard = null;
+    kanbanDragOverCol = null;
+    kanbanDraggedId = null;
+  }
+
   board.addEventListener("dragstart", (e) => {
     const card = (e.target as HTMLElement).closest<HTMLElement>(".kanban-card");
     if (!card) return;
     kanbanDraggedId = card.dataset.id ?? null;
+    kanbanDraggedCard = card;
     card.classList.add("dragging");
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   });
@@ -1032,41 +1073,36 @@ function setupKanbanDnD(board: HTMLElement): void {
   board.addEventListener("dragover", (e) => {
     e.preventDefault();
     const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
-    if (!col) return;
-    board
-      .querySelectorAll(".kanban-col-body.drag-over")
-      .forEach((el) => el.classList.remove("drag-over"));
+    if (!col || col === kanbanDragOverCol) return;
+    kanbanDragOverCol?.classList.remove("drag-over");
     col.classList.add("drag-over");
+    kanbanDragOverCol = col;
   });
 
   board.addEventListener("dragleave", (e) => {
     const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
-    if (col && !col.contains(e.relatedTarget as Node)) col.classList.remove("drag-over");
+    if (col === kanbanDragOverCol && !col.contains(e.relatedTarget as Node)) {
+      col.classList.remove("drag-over");
+      kanbanDragOverCol = null;
+    }
   });
 
   board.addEventListener("drop", (e) => {
     e.preventDefault();
-    board
-      .querySelectorAll(".dragging, .drag-over")
-      .forEach((el) => el.classList.remove("dragging", "drag-over"));
     const col = (e.target as HTMLElement).closest<HTMLElement>(".kanban-col-body");
     const newStatus = col?.dataset.status as KanbanStatus | undefined;
     const id = kanbanDraggedId;
-    kanbanDraggedId = null;
+    clearKanbanDragState();
     if (!id || !newStatus) return;
     void moveToKanbanColumn(id, newStatus);
   });
 
-  board.addEventListener("dragend", () => {
-    board
-      .querySelectorAll(".dragging, .drag-over")
-      .forEach((el) => el.classList.remove("dragging", "drag-over"));
-    kanbanDraggedId = null;
-  });
+  board.addEventListener("dragend", clearKanbanDragState);
 
   // タッチデバイス用カンバンDnD
   let touchKanbanId: string | null = null;
   let kanbanGhost: HTMLElement | null = null;
+  let kanbanTouchOverCol: HTMLElement | null = null;
 
   function onKanbanTouchMove(e: TouchEvent): void {
     if (!kanbanGhost) return;
@@ -1080,19 +1116,19 @@ function setupKanbanDnD(board: HTMLElement): void {
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     kanbanGhost.style.display = "";
 
-    board
-      .querySelectorAll(".kanban-col-body.drag-over")
-      .forEach((node) => node.classList.remove("drag-over"));
     const col = (el as HTMLElement)?.closest<HTMLElement>(".kanban-col-body");
-    if (col) col.classList.add("drag-over");
+    if (col !== kanbanTouchOverCol) {
+      kanbanTouchOverCol?.classList.remove("drag-over");
+      col?.classList.add("drag-over");
+      kanbanTouchOverCol = col ?? null;
+    }
   }
 
   function onKanbanTouchEnd(e: TouchEvent): void {
     kanbanGhost?.remove();
     kanbanGhost = null;
-    board
-      .querySelectorAll(".dragging, .drag-over")
-      .forEach((el) => el.classList.remove("dragging", "drag-over"));
+    kanbanTouchOverCol?.classList.remove("drag-over");
+    kanbanTouchOverCol = null;
     document.removeEventListener("touchmove", onKanbanTouchMove);
     document.removeEventListener("touchend", onKanbanTouchEnd);
     document.removeEventListener("touchcancel", onKanbanTouchEnd);
@@ -1113,22 +1149,7 @@ function setupKanbanDnD(board: HTMLElement): void {
       const card = (e.target as HTMLElement).closest<HTMLElement>(".kanban-card");
       if (!card) return;
       touchKanbanId = card.dataset.id ?? null;
-
-      const rect = card.getBoundingClientRect();
-      const clone = card.cloneNode(true) as HTMLElement;
-      clone.style.cssText = [
-        `position:fixed`,
-        `left:${rect.left}px`,
-        `top:${rect.top}px`,
-        `width:${rect.width}px`,
-        `opacity:0.75`,
-        `pointer-events:none`,
-        `z-index:9999`,
-        `transform:scale(1.03)`,
-        `box-shadow:0 8px 24px rgba(0,0,0,0.2)`,
-      ].join(";");
-      document.body.appendChild(clone);
-      kanbanGhost = clone;
+      kanbanGhost = createDragGhost(card);
       card.classList.add("dragging");
 
       document.addEventListener("touchmove", onKanbanTouchMove, { passive: false });
@@ -1360,9 +1381,20 @@ async function saveNotes(id: string, notesJson: string): Promise<void> {
 // ========================
 
 function setupDragAndDrop(listEl: HTMLElement): void {
-  // mousedown で drag-handle からの操作かを記録する
-  // （dragstart の e.target は draggable 要素自体になるため直接チェック不可）
+  // dragstart の e.target は draggable 要素自体になるため mousedown で記録する
   let dragFromHandle = false;
+  let draggedEl: HTMLElement | null = null;
+  let dragOverEl: HTMLElement | null = null;
+
+  function clearDragState(): void {
+    draggedEl?.classList.remove("dragging");
+    dragOverEl?.classList.remove("drag-over");
+    draggedEl = null;
+    dragOverEl = null;
+    draggedId = null;
+    dragOverId = null;
+  }
+
   listEl.addEventListener("mousedown", (e) => {
     dragFromHandle = !!(e.target as HTMLElement).closest(".drag-handle");
   });
@@ -1375,6 +1407,7 @@ function setupDragAndDrop(listEl: HTMLElement): void {
     const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
     if (!wrapper) return;
     draggedId = wrapper.dataset.id ?? null;
+    draggedEl = wrapper;
     wrapper.classList.add("dragging");
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
@@ -1387,33 +1420,29 @@ function setupDragAndDrop(listEl: HTMLElement): void {
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
     if (!wrapper || wrapper.dataset.id === draggedId) return;
-    listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-    wrapper.classList.add("drag-over");
-    dragOverId = wrapper.dataset.id ?? null;
+    if (wrapper !== dragOverEl) {
+      dragOverEl?.classList.remove("drag-over");
+      wrapper.classList.add("drag-over");
+      dragOverEl = wrapper;
+      dragOverId = wrapper.dataset.id ?? null;
+    }
   });
 
   listEl.addEventListener("dragleave", (e) => {
     const wrapper = (e.target as HTMLElement).closest<HTMLElement>(".todo-wrapper");
-    if (wrapper && !wrapper.contains(e.relatedTarget as Node)) {
+    if (wrapper === dragOverEl && !wrapper.contains(e.relatedTarget as Node)) {
       wrapper.classList.remove("drag-over");
+      dragOverEl = null;
     }
   });
 
   listEl.addEventListener("drop", (e) => {
     e.preventDefault();
-    listEl.querySelectorAll(".dragging, .drag-over").forEach((el) => {
-      el.classList.remove("dragging", "drag-over");
-    });
     void handleDrop();
+    clearDragState();
   });
 
-  listEl.addEventListener("dragend", () => {
-    listEl.querySelectorAll(".dragging, .drag-over").forEach((el) => {
-      el.classList.remove("dragging", "drag-over");
-    });
-    draggedId = null;
-    dragOverId = null;
-  });
+  listEl.addEventListener("dragend", clearDragState);
 }
 
 // タッチデバイス用リストDnD
@@ -1421,6 +1450,7 @@ function setupTouchDnD(listEl: HTMLElement): void {
   let touchDragId: string | null = null;
   let touchOverId: string | null = null;
   let ghostEl: HTMLElement | null = null;
+  let touchOverEl: HTMLElement | null = null;
 
   function onTouchMove(e: TouchEvent): void {
     if (!ghostEl) return;
@@ -1434,12 +1464,17 @@ function setupTouchDnD(listEl: HTMLElement): void {
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     ghostEl.style.display = "";
 
-    listEl.querySelectorAll(".drag-over").forEach((node) => node.classList.remove("drag-over"));
     const wrapper = (el as HTMLElement)?.closest<HTMLElement>(".todo-wrapper");
     if (wrapper && wrapper.dataset.id !== touchDragId) {
-      wrapper.classList.add("drag-over");
+      if (wrapper !== touchOverEl) {
+        touchOverEl?.classList.remove("drag-over");
+        wrapper.classList.add("drag-over");
+        touchOverEl = wrapper;
+      }
       touchOverId = wrapper.dataset.id ?? null;
     } else {
+      touchOverEl?.classList.remove("drag-over");
+      touchOverEl = null;
       touchOverId = null;
     }
   }
@@ -1447,9 +1482,8 @@ function setupTouchDnD(listEl: HTMLElement): void {
   function onTouchEnd(): void {
     ghostEl?.remove();
     ghostEl = null;
-    listEl
-      .querySelectorAll(".dragging, .drag-over")
-      .forEach((el) => el.classList.remove("dragging", "drag-over"));
+    touchOverEl?.classList.remove("drag-over");
+    touchOverEl = null;
     document.removeEventListener("touchmove", onTouchMove);
     document.removeEventListener("touchend", onTouchEnd);
     document.removeEventListener("touchcancel", onTouchEnd);
@@ -1473,22 +1507,7 @@ function setupTouchDnD(listEl: HTMLElement): void {
       const wrapper = handle.closest<HTMLElement>(".todo-wrapper");
       if (!wrapper) return;
       touchDragId = wrapper.dataset.id ?? null;
-
-      const rect = wrapper.getBoundingClientRect();
-      const clone = wrapper.cloneNode(true) as HTMLElement;
-      clone.style.cssText = [
-        `position:fixed`,
-        `left:${rect.left}px`,
-        `top:${rect.top}px`,
-        `width:${rect.width}px`,
-        `opacity:0.75`,
-        `pointer-events:none`,
-        `z-index:9999`,
-        `transform:scale(1.03)`,
-        `box-shadow:0 8px 24px rgba(0,0,0,0.2)`,
-      ].join(";");
-      document.body.appendChild(clone);
-      ghostEl = clone;
+      ghostEl = createDragGhost(wrapper);
       wrapper.classList.add("dragging");
 
       // ドラッグ中のみ non-passive を document に付ける（通常スクロールをブロックしない）
