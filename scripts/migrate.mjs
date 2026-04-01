@@ -7,13 +7,13 @@
  *   TURSO_AUTH_TOKEN    - Turso 認証トークン
  */
 
-import { createClient } from '@libsql/client/http';
+import { createClient } from "@libsql/client/http";
 
 const url = process.env.TURSO_DATABASE_URL;
 const authToken = process.env.TURSO_AUTH_TOKEN;
 
 if (!url || !authToken) {
-  console.error('❌ TURSO_DATABASE_URL と TURSO_AUTH_TOKEN が必要ですわ');
+  console.error("❌ TURSO_DATABASE_URL と TURSO_AUTH_TOKEN が必要ですわ");
   process.exit(1);
 }
 
@@ -68,7 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_todos_user_id_order ON todos(user_id, order_index
 CREATE INDEX IF NOT EXISTS idx_challenges_expires ON challenges(expires_at);
 `;
 
-const statements = SCHEMA.split(';')
+const statements = SCHEMA.split(";")
   .map((s) => s.trim())
   .filter((s) => s.length > 0)
   .map((sql) => ({ sql, args: [] }));
@@ -76,6 +76,6 @@ const statements = SCHEMA.split(';')
 console.log(`🔄 Turso マイグレーション実行中... (${url})`);
 
 const client = createClient({ url, authToken });
-await client.batch(statements, 'write');
+await client.batch(statements, "write");
 
-console.log('✅ マイグレーション完了ですわ');
+console.log("✅ マイグレーション完了ですわ");

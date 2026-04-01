@@ -1338,9 +1338,10 @@ function openNotesPanel(
   });
 
   editor.setRootElement(editorEl);
-  // モバイルでタップ時にフォーカスを確実に取得する
+  // iOS Safari: editor.focus() は内部で queueMicrotask を使うためキーボードが出ない。
+  // ネイティブ focus() を直接呼ぶことでユーザージェスチャー内での同期フォーカスを保証する。
   editorEl.addEventListener("touchend", (e) => {
-    if (!(e.target as HTMLElement).closest("button")) editor.focus();
+    if (!(e.target as HTMLElement).closest("button")) editorEl.focus();
   });
 
   const unregRich = registerRichText(editor);
@@ -1403,8 +1404,8 @@ function openNotesPanel(
     ],
   });
 
-  // フォーカスを当てる
-  editor.focus();
+  // フォーカスを当てる（同期的に呼ぶことでモバイルキーボードを確実に起動する）
+  editorEl.focus();
 }
 
 async function saveNotes(id: string, notesJson: string): Promise<void> {

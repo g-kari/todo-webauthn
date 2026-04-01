@@ -1,6 +1,6 @@
-import { Hono } from 'hono';
-import authRoutes from './routes/auth';
-import todoRoutes from './routes/todos';
+import { Hono } from "hono";
+import authRoutes from "./routes/auth";
+import todoRoutes from "./routes/todos";
 
 export type Bindings = {
   ASSETS: Fetcher;
@@ -14,7 +14,7 @@ export type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.route('/api/auth', authRoutes);
-app.route('/api/todos', todoRoutes);
+app.route("/api/auth", authRoutes);
+app.route("/api/todos", todoRoutes);
 
 export default app;

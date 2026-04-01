@@ -1,4 +1,4 @@
-import type { DbAdapter } from './adapter';
+import type { DbAdapter } from "./adapter";
 import type {
   User,
   Credential,
@@ -8,7 +8,7 @@ import type {
   CreateCredentialData,
   CreateChallengeData,
   TodoUpdate,
-} from './types';
+} from "./types";
 
 function toUint8Array(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value;
@@ -22,19 +22,19 @@ export function createD1Adapter(db: D1Database): DbAdapter {
 
     async findUserByUsername(username) {
       return db
-        .prepare('SELECT id, username, created_at FROM users WHERE username = ?')
+        .prepare("SELECT id, username, created_at FROM users WHERE username = ?")
         .bind(username)
         .first<User>();
     },
 
     async findUserById(id) {
       const user = await db
-        .prepare('SELECT id, username, created_at FROM users WHERE id = ?')
+        .prepare("SELECT id, username, created_at FROM users WHERE id = ?")
         .bind(id)
         .first<User>();
       if (!user) return null;
       const countRow = await db
-        .prepare('SELECT COUNT(*) as count FROM credentials WHERE user_id = ?')
+        .prepare("SELECT COUNT(*) as count FROM credentials WHERE user_id = ?")
         .bind(id)
         .first<{ count: number }>();
       return { ...user, credentialCount: countRow?.count ?? 0 };
@@ -42,7 +42,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
 
     async createUserIfNotExists(id, username) {
       await db
-        .prepare('INSERT INTO users (id, username) VALUES (?, ?) ON CONFLICT(username) DO NOTHING')
+        .prepare("INSERT INTO users (id, username) VALUES (?, ?) ON CONFLICT(username) DO NOTHING")
         .bind(id, username)
         .run();
     },
@@ -52,30 +52,30 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async findCredentialsByUserId(userId) {
       const result = await db
         .prepare(
-          'SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE user_id = ?'
+          "SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE user_id = ?",
         )
         .bind(userId)
-        .all<Omit<Credential, 'public_key'> & { public_key: unknown }>();
+        .all<Omit<Credential, "public_key"> & { public_key: unknown }>();
       return result.results.map((r) => ({ ...r, public_key: toUint8Array(r.public_key) }));
     },
 
     async findCredentialsWithSaltByUserId(userId) {
       const result = await db
         .prepare(
-          "SELECT c.id, c.user_id, c.public_key, c.counter, c.transports, c.device_type, c.backed_up, c.prf_capable, c.created_at, ps.salt FROM credentials c LEFT JOIN prf_salts ps ON c.id = ps.credential_id AND ps.purpose = 'encryption' WHERE c.user_id = ?"
+          "SELECT c.id, c.user_id, c.public_key, c.counter, c.transports, c.device_type, c.backed_up, c.prf_capable, c.created_at, ps.salt FROM credentials c LEFT JOIN prf_salts ps ON c.id = ps.credential_id AND ps.purpose = 'encryption' WHERE c.user_id = ?",
         )
         .bind(userId)
-        .all<Omit<CredentialWithSalt, 'public_key'> & { public_key: unknown }>();
+        .all<Omit<CredentialWithSalt, "public_key"> & { public_key: unknown }>();
       return result.results.map((r) => ({ ...r, public_key: toUint8Array(r.public_key) }));
     },
 
     async findCredentialById(id) {
       const row = await db
         .prepare(
-          'SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE id = ?'
+          "SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE id = ?",
         )
         .bind(id)
-        .first<Omit<Credential, 'public_key'> & { public_key: unknown }>();
+        .first<Omit<Credential, "public_key"> & { public_key: unknown }>();
       if (!row) return null;
       return { ...row, public_key: toUint8Array(row.public_key) };
     },
@@ -83,7 +83,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async createCredential(data: CreateCredentialData) {
       await db
         .prepare(
-          'INSERT INTO credentials (id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          "INSERT INTO credentials (id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           data.id,
@@ -93,30 +93,25 @@ export function createD1Adapter(db: D1Database): DbAdapter {
           data.transports,
           data.deviceType,
           data.backedUp ? 1 : 0,
-          data.prfCapable ? 1 : 0
+          data.prfCapable ? 1 : 0,
         )
         .run();
     },
 
     async updateCredentialCounter(id, counter) {
-      await db
-        .prepare('UPDATE credentials SET counter = ? WHERE id = ?')
-        .bind(counter, id)
-        .run();
+      await db.prepare("UPDATE credentials SET counter = ? WHERE id = ?").bind(counter, id).run();
     },
 
     // ===== チャレンジ =====
 
     async cleanupExpiredChallenges() {
-      await db
-        .prepare("DELETE FROM challenges WHERE expires_at < datetime('now')")
-        .run();
+      await db.prepare("DELETE FROM challenges WHERE expires_at < datetime('now')").run();
     },
 
     async createChallenge(data: CreateChallengeData) {
       await db
         .prepare(
-          "INSERT INTO challenges (id, challenge, user_id, type, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+5 minutes'))"
+          "INSERT INTO challenges (id, challenge, user_id, type, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+5 minutes'))",
         )
         .bind(data.id, data.challenge, data.userId, data.type)
         .run();
@@ -126,7 +121,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
       // 登録・認証どちらもユーザーに紐付けてチャレンジを取得する（並行ログイン時の混線防止）
       return db
         .prepare(
-          "SELECT challenge FROM challenges WHERE user_id = ? AND type = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
+          "SELECT challenge FROM challenges WHERE user_id = ? AND type = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1",
         )
         .bind(userId, type)
         .first<Challenge>();
@@ -160,7 +155,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async findTodosByUserId(userId) {
       const result = await db
         .prepare(
-          'SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY order_index ASC, created_at ASC'
+          "SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY order_index ASC, created_at ASC",
         )
         .bind(userId)
         .all<Todo>();
@@ -169,14 +164,14 @@ export function createD1Adapter(db: D1Database): DbAdapter {
 
     async findTodoById(id, userId) {
       return db
-        .prepare('SELECT id FROM todos WHERE id = ? AND user_id = ?')
+        .prepare("SELECT id FROM todos WHERE id = ? AND user_id = ?")
         .bind(id, userId)
         .first<Todo>();
     },
 
     async getMaxOrderIndex(userId) {
       const row = await db
-        .prepare('SELECT MAX(order_index) as max_order FROM todos WHERE user_id = ?')
+        .prepare("SELECT MAX(order_index) as max_order FROM todos WHERE user_id = ?")
         .bind(userId)
         .first<{ max_order: number | null }>();
       return (row?.max_order ?? -1) + 1;
@@ -185,13 +180,13 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async createTodo(id, userId, encryptedData, iv, orderIndex) {
       await db
         .prepare(
-          'INSERT INTO todos (id, user_id, encrypted_data, iv, order_index) VALUES (?, ?, ?, ?, ?)'
+          "INSERT INTO todos (id, user_id, encrypted_data, iv, order_index) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(id, userId, encryptedData, iv, orderIndex)
         .run();
       return db
         .prepare(
-          'SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE id = ?'
+          "SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE id = ?",
         )
         .bind(id)
         .first<Todo>();
@@ -200,7 +195,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async updateTodo(id, userId, encryptedData, iv) {
       await db
         .prepare(
-          "UPDATE todos SET encrypted_data = ?, iv = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+          "UPDATE todos SET encrypted_data = ?, iv = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
         )
         .bind(encryptedData, iv, id, userId)
         .run();
@@ -208,7 +203,7 @@ export function createD1Adapter(db: D1Database): DbAdapter {
 
     async deleteTodo(id, userId) {
       const result = await db
-        .prepare('DELETE FROM todos WHERE id = ? AND user_id = ?')
+        .prepare("DELETE FROM todos WHERE id = ? AND user_id = ?")
         .bind(id, userId)
         .run();
       return result.meta.changes;
@@ -217,8 +212,8 @@ export function createD1Adapter(db: D1Database): DbAdapter {
     async reorderTodos(ids, userId) {
       const stmts = ids.map((id, index) =>
         db
-          .prepare('UPDATE todos SET order_index = ? WHERE id = ? AND user_id = ?')
-          .bind(index, id, userId)
+          .prepare("UPDATE todos SET order_index = ? WHERE id = ? AND user_id = ?")
+          .bind(index, id, userId),
       );
       await db.batch(stmts);
     },
@@ -227,9 +222,9 @@ export function createD1Adapter(db: D1Database): DbAdapter {
       const stmts = updates.map((todo) =>
         db
           .prepare(
-            "UPDATE todos SET encrypted_data = ?, iv = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+            "UPDATE todos SET encrypted_data = ?, iv = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
           )
-          .bind(todo.encrypted_data, todo.iv, todo.id, userId)
+          .bind(todo.encrypted_data, todo.iv, todo.id, userId),
       );
       await db.batch(stmts);
     },

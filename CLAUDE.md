@@ -10,38 +10,38 @@ Cloudflare Workers にデプロイし、GitHub 連携による自動デプロイ
 
 ## 技術スタック
 
-| レイヤー | 技術 |
-|---------|------|
-| ランタイム | Cloudflare Workers |
-| フレームワーク | Hono (TypeScript) |
-| データベース | Turso (libSQL / SQLite 互換) |
-| 認証 | @simplewebauthn/server v13+ (サーバー) |
-| 認証 (クライアント) | @simplewebauthn/browser v13+ (npm) |
-| 暗号化 | WebAuthn PRF → HKDF → AES-GCM-256 (クライアントサイドのみ) |
-| リッチテキスト | Lexical (メモエディタ) |
-| フロントエンド | TypeScript + Vite (ビルド出力 → `public/`) |
-| ツールチェーン | vite-plus (Oxlint + Oxfmt 統合品質ツール) |
-| 設定 | wrangler.jsonc |
-| デプロイ | Cloudflare Workers Builds (GitHub 連携) ※GitHub Actions 不使用 |
+| レイヤー            | 技術                                                           |
+| ------------------- | -------------------------------------------------------------- |
+| ランタイム          | Cloudflare Workers                                             |
+| フレームワーク      | Hono (TypeScript)                                              |
+| データベース        | Turso (libSQL / SQLite 互換)                                   |
+| 認証                | @simplewebauthn/server v13+ (サーバー)                         |
+| 認証 (クライアント) | @simplewebauthn/browser v13+ (npm)                             |
+| 暗号化              | WebAuthn PRF → HKDF → AES-GCM-256 (クライアントサイドのみ)     |
+| リッチテキスト      | Lexical (メモエディタ)                                         |
+| フロントエンド      | TypeScript + Vite (ビルド出力 → `public/`)                     |
+| ツールチェーン      | vite-plus (Oxlint + Oxfmt 統合品質ツール)                      |
+| 設定                | wrangler.jsonc                                                 |
+| デプロイ            | Cloudflare Workers Builds (GitHub 連携) ※GitHub Actions 不使用 |
 
 ## フロントエンド機能
 
 `frontend/main.ts` がすべてのUI・暗号化・状態管理を担う。
 
-| 機能 | 概要 |
-|------|------|
-| WebAuthn 登録・認証 | PRF 拡張必須。非対応認証器は登録不可 |
-| TODO CRUD | 追加・完了切り替え・インライン編集・削除 |
-| 暗号化 | AES-GCM-256。編集のたびに再暗号化してサーバーへ送信 |
-| 楽観的UI更新 | `patchTodo` はキャッシュ即時更新→バックグラウンド同期。サーバー応答を待たない |
-| リスト表示 | DnD 並び替え（drag-handle からのみ）・フィルター（すべて/未完了/完了済み） |
-| カンバン表示 | 未着手/進行中/完了の3列。DnD でステータス変更 |
-| テキスト検索 | 復号済みキャッシュをクライアントサイドで絞り込み（サーバー通信なし） |
-| 優先度 | 高/中/低。クリックでサイクル |
-| 期日 | 日付ピッカー。本日・翌日・期限超過を色分け表示 |
-| Google Calendar | 期日付き TODO をワンクリックで GCal イベント作成ページへ |
-| Lexical メモ | TODO ごとのリッチテキストノート。800ms debounce で自動保存 |
-| ユーザー設定 | アクセントカラー・フォントサイズ・カンバン列名。localStorage に保存 |
+| 機能                | 概要                                                                          |
+| ------------------- | ----------------------------------------------------------------------------- |
+| WebAuthn 登録・認証 | PRF 拡張必須。非対応認証器は登録不可                                          |
+| TODO CRUD           | 追加・完了切り替え・インライン編集・削除                                      |
+| 暗号化              | AES-GCM-256。編集のたびに再暗号化してサーバーへ送信                           |
+| 楽観的UI更新        | `patchTodo` はキャッシュ即時更新→バックグラウンド同期。サーバー応答を待たない |
+| リスト表示          | DnD 並び替え（drag-handle からのみ）・フィルター（すべて/未完了/完了済み）    |
+| カンバン表示        | 未着手/進行中/完了の3列。DnD でステータス変更                                 |
+| テキスト検索        | 復号済みキャッシュをクライアントサイドで絞り込み（サーバー通信なし）          |
+| 優先度              | 高/中/低。クリックでサイクル                                                  |
+| 期日                | 日付ピッカー。本日・翌日・期限超過を色分け表示                                |
+| Google Calendar     | 期日付き TODO をワンクリックで GCal イベント作成ページへ                      |
+| Lexical メモ        | TODO ごとのリッチテキストノート。800ms debounce で自動保存                    |
+| ユーザー設定        | アクセントカラー・フォントサイズ・カンバン列名。localStorage に保存           |
 
 ### 状態管理の重要な制約
 
@@ -101,6 +101,7 @@ WebAuthn/
 ```
 
 **重要事項**:
+
 - 暗号鍵はクライアントのメモリ上のみに存在
 - PRF 出力はサーバーに送信しない
 - サーバーは TODO コンテンツを復号できない
@@ -112,25 +113,25 @@ WebAuthn/
 
 ### 認証 (`/api/auth`)
 
-| メソッド | パス | 認証 | 説明 |
-|---------|------|------|------|
-| POST | `/auth/register/options` | 不要 | 登録チャレンジ生成 |
-| POST | `/auth/register/verify` | 不要 | 登録検証・ユーザー作成 |
-| POST | `/auth/login/options` | 不要 | 認証チャレンジ生成・PRF ソルト返却 |
-| POST | `/auth/login/verify` | 不要 | 認証検証・JWT Cookie 発行 |
-| GET | `/auth/me` | 必要 | セッション確認・ユーザー名取得 |
-| POST | `/auth/logout` | 不要 | JWT Cookie 削除 |
+| メソッド | パス                     | 認証 | 説明                               |
+| -------- | ------------------------ | ---- | ---------------------------------- |
+| POST     | `/auth/register/options` | 不要 | 登録チャレンジ生成                 |
+| POST     | `/auth/register/verify`  | 不要 | 登録検証・ユーザー作成             |
+| POST     | `/auth/login/options`    | 不要 | 認証チャレンジ生成・PRF ソルト返却 |
+| POST     | `/auth/login/verify`     | 不要 | 認証検証・JWT Cookie 発行          |
+| GET      | `/auth/me`               | 必要 | セッション確認・ユーザー名取得     |
+| POST     | `/auth/logout`           | 不要 | JWT Cookie 削除                    |
 
 ### TODO (`/api/todos`)
 
-| メソッド | パス | 説明 |
-|---------|------|------|
-| GET | `/todos` | 自分の TODO 一覧取得（order_index 順） |
-| POST | `/todos` | TODO 追加（encrypted_data + iv を受け取る） |
-| PUT | `/todos/:id` | TODO 更新（encrypted_data + iv を受け取る） |
-| DELETE | `/todos/:id` | TODO 削除 |
-| PUT | `/todos/reorder` | 複数 TODO の並び順を一括更新 |
-| POST | `/todos/bulk` | 複数 TODO の暗号化データを一括更新（パスキー追加時の再暗号化用） |
+| メソッド | パス             | 説明                                                             |
+| -------- | ---------------- | ---------------------------------------------------------------- |
+| GET      | `/todos`         | 自分の TODO 一覧取得（order_index 順）                           |
+| POST     | `/todos`         | TODO 追加（encrypted_data + iv を受け取る）                      |
+| PUT      | `/todos/:id`     | TODO 更新（encrypted_data + iv を受け取る）                      |
+| DELETE   | `/todos/:id`     | TODO 削除                                                        |
+| PUT      | `/todos/reorder` | 複数 TODO の並び順を一括更新                                     |
+| POST     | `/todos/bulk`    | 複数 TODO の暗号化データを一括更新（パスキー追加時の再暗号化用） |
 
 ## 開発コマンド
 
@@ -174,12 +175,12 @@ npm run deploy
 
 ### wrangler.jsonc の vars（公開可）
 
-| 変数 | 説明 | 例 |
-|-----|------|-----|
-| `RP_NAME` | WebAuthn RP 名 | "WebAuthn TODO" |
-| `RP_ID` | WebAuthn RP ID（ドメイン） | "your-app.workers.dev" |
-| `RP_ORIGIN` | WebAuthn 期待 Origin | "https://your-app.workers.dev" |
-| `TURSO_DATABASE_URL` | Turso DB URL | "libsql://your-db.turso.io" |
+| 変数                 | 説明                       | 例                             |
+| -------------------- | -------------------------- | ------------------------------ |
+| `RP_NAME`            | WebAuthn RP 名             | "WebAuthn TODO"                |
+| `RP_ID`              | WebAuthn RP ID（ドメイン） | "your-app.workers.dev"         |
+| `RP_ORIGIN`          | WebAuthn 期待 Origin       | "https://your-app.workers.dev" |
+| `TURSO_DATABASE_URL` | Turso DB URL               | "libsql://your-db.turso.io"    |
 
 ### wrangler secret（秘密情報）
 
@@ -204,6 +205,7 @@ return createD1Adapter((env as unknown as { DB: D1Database }).DB);
 ```
 
 D1 に切り替える場合は追加で：
+
 1. `wrangler.jsonc` に `d1_databases` バインディングを追加
 2. `src/index.ts` の `Bindings` 型に `DB: D1Database` を追加
 
@@ -214,6 +216,7 @@ D1 に切り替える場合は追加で：
 ### 初回セットアップ
 
 1. **シークレット設定**
+
    ```bash
    npx wrangler secret put JWT_SECRET
    npx wrangler secret put TURSO_AUTH_TOKEN
@@ -239,26 +242,26 @@ D1 に切り替える場合は追加で：
 
 ## PRF 拡張の対応状況
 
-| 認証器 | PRF サポート |
-|--------|------------|
-| 1Password | ✅ サポート |
-| iCloud Keychain (iOS 18+) | ✅ サポート |
-| Google Password Manager | ✅ サポート |
-| YubiKey (FW 5.7+) | ✅ サポート |
-| Windows Hello | 一部サポート |
-| 古い FIDO2 デバイス | ❌ 非サポート |
+| 認証器                    | PRF サポート  |
+| ------------------------- | ------------- |
+| 1Password                 | ✅ サポート   |
+| iCloud Keychain (iOS 18+) | ✅ サポート   |
+| Google Password Manager   | ✅ サポート   |
+| YubiKey (FW 5.7+)         | ✅ サポート   |
+| Windows Hello             | 一部サポート  |
+| 古い FIDO2 デバイス       | ❌ 非サポート |
 
 PRF 非対応の認証器では登録・ログイン不可（個人用のため必須とする）。
 
 ## DB スキーマ
 
-| テーブル | 概要 |
-|---------|------|
-| `users` | ユーザー情報 |
-| `credentials` | WebAuthn クレデンシャル |
-| `challenges` | 短命チャレンジ（5 分有効） |
-| `prf_salts` | PRF 鍵導出用ソルト（クレデンシャルごと） |
-| `todos` | 暗号化 TODO（encrypted_data + iv + order_index のみ） |
+| テーブル      | 概要                                                  |
+| ------------- | ----------------------------------------------------- |
+| `users`       | ユーザー情報                                          |
+| `credentials` | WebAuthn クレデンシャル                               |
+| `challenges`  | 短命チャレンジ（5 分有効）                            |
+| `prf_salts`   | PRF 鍵導出用ソルト（クレデンシャルごと）              |
+| `todos`       | 暗号化 TODO（encrypted_data + iv + order_index のみ） |
 
 スキーマを変更する場合は `migrations/0001_initial.sql` と `scripts/migrate.mjs` 内の `SCHEMA` 定数を必ず同期すること。
 

@@ -7,36 +7,34 @@
  * - 静的アセット → キャッシュ優先（ヒットしなければネットワーク取得してキャッシュ）
  */
 
-const CACHE_NAME = 'webauthn-todo-v1';
+const CACHE_NAME = "webauthn-todo-v1";
 
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(['/', '/manifest.webmanifest'])
-    )
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(["/", "/manifest.webmanifest"])),
   );
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((names) =>
-        Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
+        Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))),
       )
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
-self.addEventListener('fetch', (event) => {
+self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   // API calls: never cache — WebAuthn ceremony and encrypted data must be fresh
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith("/api/")) return;
 
   // Navigation (SPA): network first, fall back to cached shell
-  if (event.request.mode === 'navigate') {
+  if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
@@ -46,7 +44,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match('/').then((r) => r ?? Response.error()))
+        .catch(() => caches.match("/").then((r) => r ?? Response.error())),
     );
     return;
   }
@@ -62,6 +60,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       });
-    })
+    }),
   );
 });

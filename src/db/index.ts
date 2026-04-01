@@ -1,14 +1,14 @@
-export type { DbAdapter } from './adapter';
-export type * from './types';
-export { createTursoAdapter } from './turso';
-export { createD1Adapter } from './d1';
+export type { DbAdapter } from "./adapter";
+export type * from "./types";
+export { createTursoAdapter } from "./turso";
+export { createD1Adapter } from "./d1";
 
-import type { Bindings } from '../index';
-import { createTursoAdapter } from './turso';
+import type { Bindings } from "../index";
+import { createTursoAdapter } from "./turso";
 // D1 に切り替える場合:
 // import { createD1Adapter } from './d1';
 
-import type { DbAdapter } from './adapter';
+import type { DbAdapter } from "./adapter";
 
 /**
  * 環境変数に応じて DB アダプターを生成するファクトリ

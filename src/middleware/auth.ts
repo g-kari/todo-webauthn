@@ -1,6 +1,6 @@
-import { type Context, type MiddlewareHandler } from 'hono';
-import { getCookie } from 'hono/cookie';
-import type { Bindings } from '../index';
+import { type Context, type MiddlewareHandler } from "hono";
+import { getCookie } from "hono/cookie";
+import type { Bindings } from "../index";
 
 export interface SessionPayload {
   userId: string;
@@ -19,17 +19,17 @@ type Variables = {
 
 function base64UrlEncode(data: ArrayBuffer): string {
   const bytes = new Uint8Array(data);
-  let str = '';
+  let str = "";
   for (const byte of bytes) {
     str += String.fromCharCode(byte);
   }
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 function base64UrlDecode(str: string): ArrayBuffer {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/");
   const pad = padded.length % 4;
-  const paddedStr = pad ? padded + '='.repeat(4 - pad) : padded;
+  const paddedStr = pad ? padded + "=".repeat(4 - pad) : padded;
   const binary = atob(paddedStr);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -41,17 +41,17 @@ function base64UrlDecode(str: string): ArrayBuffer {
 async function getSigningKey(secret: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
-  return crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-    'verify',
+  return crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
   ]);
 }
 
 export async function createJwt(
-  payload: Omit<SessionPayload, 'iat' | 'exp'>,
-  secret: string
+  payload: Omit<SessionPayload, "iat" | "exp">,
+  secret: string,
 ): Promise<string> {
-  const header = { alg: 'HS256', typ: 'JWT' };
+  const header = { alg: "HS256", typ: "JWT" };
   const now = Math.floor(Date.now() / 1000);
   const fullPayload: SessionPayload = {
     ...payload,
@@ -61,51 +61,62 @@ export async function createJwt(
 
   const encoder = new TextEncoder();
   const headerStr = base64UrlEncode(encoder.encode(JSON.stringify(header)).buffer as ArrayBuffer);
-  const payloadStr = base64UrlEncode(encoder.encode(JSON.stringify(fullPayload)).buffer as ArrayBuffer);
+  const payloadStr = base64UrlEncode(
+    encoder.encode(JSON.stringify(fullPayload)).buffer as ArrayBuffer,
+  );
   const signingInput = `${headerStr}.${payloadStr}`;
 
   const key = await getSigningKey(secret);
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signingInput));
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(signingInput));
 
   return `${signingInput}.${base64UrlEncode(signature)}`;
 }
 
 export async function verifyJwt(token: string, secret: string): Promise<SessionPayload | null> {
-  const parts = token.split('.');
+  const parts = token.split(".");
   if (parts.length !== 3) return null;
 
   const [headerStr, payloadStr, signatureStr] = parts;
   const signingInput = `${headerStr}.${payloadStr}`;
 
-  const key = await getSigningKey(secret);
-  const encoder = new TextEncoder();
-  const signature = base64UrlDecode(signatureStr);
+  try {
+    const key = await getSigningKey(secret);
+    const encoder = new TextEncoder();
+    const signature = base64UrlDecode(signatureStr);
 
-  const valid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(signingInput).buffer as ArrayBuffer);
-  if (!valid) return null;
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature,
+      encoder.encode(signingInput).buffer as ArrayBuffer,
+    );
+    if (!valid) return null;
 
-  const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadStr));
-  const payload = JSON.parse(payloadJson) as SessionPayload;
+    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadStr));
+    const payload = JSON.parse(payloadJson) as SessionPayload;
 
-  if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
 
-  return payload;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 export function requireAuth(): MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> {
   return async (c: Context<{ Bindings: Bindings; Variables: Variables }>, next) => {
-    const token = getCookie(c, 'session');
+    const token = getCookie(c, "session");
     if (!token) {
-      return c.json({ error: '認証が必要ですわ' }, 401);
+      return c.json({ error: "認証が必要ですわ" }, 401);
     }
 
     const payload = await verifyJwt(token, c.env.JWT_SECRET);
     if (!payload) {
-      return c.json({ error: 'セッションが無効ですわ' }, 401);
+      return c.json({ error: "セッションが無効ですわ" }, 401);
     }
 
-    c.set('userId', payload.userId);
-    c.set('credentialId', payload.credentialId);
+    c.set("userId", payload.userId);
+    c.set("credentialId", payload.credentialId);
     await next();
   };
 }

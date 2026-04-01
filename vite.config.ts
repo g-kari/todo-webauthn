@@ -1,15 +1,15 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  root: 'frontend',
+  root: "frontend",
   build: {
-    outDir: '../public',
+    outDir: "../public",
     emptyOutDir: true,
   },
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:8787',
+      "/api": {
+        target: "http://localhost:8787",
         changeOrigin: true,
       },
     },

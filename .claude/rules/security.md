@@ -17,9 +17,9 @@ paths:
 - クエリはすべてパラメータバインディングを使う
   ```typescript
   // ✅ 正しい
-  client.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] })
+  client.execute({ sql: "SELECT * FROM users WHERE id = ?", args: [id] });
   // ❌ 禁止
-  client.execute(`SELECT * FROM users WHERE id = '${id}'`)
+  client.execute(`SELECT * FROM users WHERE id = '${id}'`);
   ```
 
 ## 認証・セッション

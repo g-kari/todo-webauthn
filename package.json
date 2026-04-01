@@ -13,7 +13,9 @@
     "type-check": "tsc --noEmit",
     "lint": "vp lint",
     "format": "vp format",
-    "check": "vp check"
+    "check": "vp check",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@lexical/history": "^0.42.0",
@@ -30,6 +32,7 @@
     "typescript": "^5.8.3",
     "vite": "^8.0.3",
     "vite-plus": "^0.1.15",
+    "vitest": "^4.1.2",
     "wrangler": "^4.12.0"
   }
 }

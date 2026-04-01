@@ -7,7 +7,7 @@ import type {
   CreateCredentialData,
   CreateChallengeData,
   TodoUpdate,
-} from './types';
+} from "./types";
 
 /**
  * DBアダプターインターフェース
@@ -32,7 +32,7 @@ export interface DbAdapter {
   createChallenge(data: CreateChallengeData): Promise<void>;
   findLatestChallenge(
     userId: string | null,
-    type: 'registration' | 'authentication'
+    type: "registration" | "authentication",
   ): Promise<Challenge | null>;
   deleteRegistrationChallenges(userId: string): Promise<void>;
   /** 認証済みチャレンジをchallenge値で特定して削除する（他ユーザーのチャレンジを巻き込まない） */
@@ -49,7 +49,7 @@ export interface DbAdapter {
     userId: string,
     encryptedData: string,
     iv: string,
-    orderIndex: number
+    orderIndex: number,
   ): Promise<Todo | null>;
   getMaxOrderIndex(userId: string): Promise<number>;
   updateTodo(id: string, userId: string, encryptedData: string, iv: string): Promise<void>;

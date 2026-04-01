@@ -27,16 +27,17 @@ npm ci
 
 ## 環境変数・シークレット一覧
 
-| キー | 種別 | 説明 |
-|-----|------|------|
-| `RP_NAME` | var (wrangler.jsonc) | WebAuthn RP 名 |
-| `RP_ID` | var (wrangler.jsonc) | `todo.0g0.xyz` |
-| `RP_ORIGIN` | var (wrangler.jsonc) | `https://todo.0g0.xyz` |
-| `TURSO_DATABASE_URL` | var (wrangler.jsonc) | `libsql://todo-g-kari.aws-ap-northeast-1.turso.io` |
-| `TURSO_AUTH_TOKEN` | secret (wrangler secret put) | Turso 認証トークン |
-| `JWT_SECRET` | secret (wrangler secret put) | JWT 署名鍵 |
+| キー                 | 種別                         | 説明                                               |
+| -------------------- | ---------------------------- | -------------------------------------------------- |
+| `RP_NAME`            | var (wrangler.jsonc)         | WebAuthn RP 名                                     |
+| `RP_ID`              | var (wrangler.jsonc)         | `todo.0g0.xyz`                                     |
+| `RP_ORIGIN`          | var (wrangler.jsonc)         | `https://todo.0g0.xyz`                             |
+| `TURSO_DATABASE_URL` | var (wrangler.jsonc)         | `libsql://todo-g-kari.aws-ap-northeast-1.turso.io` |
+| `TURSO_AUTH_TOKEN`   | secret (wrangler secret put) | Turso 認証トークン                                 |
+| `JWT_SECRET`         | secret (wrangler secret put) | JWT 署名鍵                                         |
 
 Cloudflare Workers Builds のビルド環境変数（ダッシュボードで設定）:
+
 - `TURSO_DATABASE_URL`
 - `TURSO_AUTH_TOKEN`
 

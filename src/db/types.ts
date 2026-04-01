@@ -22,7 +22,7 @@ export interface Challenge {
   id: string;
   challenge: string;
   user_id: string | null;
-  type: 'registration' | 'authentication';
+  type: "registration" | "authentication";
   expires_at: string;
 }
 
@@ -60,7 +60,7 @@ export interface CreateChallengeData {
   id: string;
   challenge: string;
   userId: string | null;
-  type: 'registration' | 'authentication';
+  type: "registration" | "authentication";
 }
 
 export interface TodoUpdate {

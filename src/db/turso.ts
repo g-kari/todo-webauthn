@@ -1,5 +1,5 @@
-import { createClient } from '@libsql/client/http';
-import type { DbAdapter } from './adapter';
+import { createClient } from "@libsql/client/http";
+import type { DbAdapter } from "./adapter";
 import type {
   User,
   Credential,
@@ -9,7 +9,7 @@ import type {
   CreateCredentialData,
   CreateChallengeData,
   TodoUpdate,
-} from './types';
+} from "./types";
 
 function toRows<T>(result: { rows: unknown[] }): T[] {
   return result.rows as unknown as T[];
@@ -23,7 +23,7 @@ function firstRow<T>(result: { rows: unknown[] }): T | null {
 function toUint8Array(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     return new Uint8Array(Object.values(value as Record<string, number>));
   }
   return new Uint8Array(0);
@@ -37,24 +37,33 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
 
     async findUserByUsername(username) {
       return firstRow<User>(
-        await client.execute({ sql: 'SELECT id, username, created_at FROM users WHERE username = ?', args: [username] })
+        await client.execute({
+          sql: "SELECT id, username, created_at FROM users WHERE username = ?",
+          args: [username],
+        }),
       );
     },
 
     async findUserById(id) {
       const user = firstRow<User>(
-        await client.execute({ sql: 'SELECT id, username, created_at FROM users WHERE id = ?', args: [id] })
+        await client.execute({
+          sql: "SELECT id, username, created_at FROM users WHERE id = ?",
+          args: [id],
+        }),
       );
       if (!user) return null;
       const countRow = firstRow<{ count: number }>(
-        await client.execute({ sql: 'SELECT COUNT(*) as count FROM credentials WHERE user_id = ?', args: [id] })
+        await client.execute({
+          sql: "SELECT COUNT(*) as count FROM credentials WHERE user_id = ?",
+          args: [id],
+        }),
       );
       return { ...user, credentialCount: countRow?.count ?? 0 };
     },
 
     async createUserIfNotExists(id, username) {
       await client.execute({
-        sql: 'INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)',
+        sql: "INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)",
         args: [id, username],
       });
     },
@@ -62,31 +71,31 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
     // ===== クレデンシャル =====
 
     async findCredentialsByUserId(userId) {
-      const rows = toRows<Omit<Credential, 'public_key'> & { public_key: unknown }>(
+      const rows = toRows<Omit<Credential, "public_key"> & { public_key: unknown }>(
         await client.execute({
-          sql: 'SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE user_id = ?',
+          sql: "SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE user_id = ?",
           args: [userId],
-        })
+        }),
       );
       return rows.map((r) => ({ ...r, public_key: toUint8Array(r.public_key) }));
     },
 
     async findCredentialsWithSaltByUserId(userId) {
-      const rows = toRows<Omit<CredentialWithSalt, 'public_key'> & { public_key: unknown }>(
+      const rows = toRows<Omit<CredentialWithSalt, "public_key"> & { public_key: unknown }>(
         await client.execute({
           sql: "SELECT c.id, c.user_id, c.public_key, c.counter, c.transports, c.device_type, c.backed_up, c.prf_capable, c.created_at, ps.salt FROM credentials c LEFT JOIN prf_salts ps ON c.id = ps.credential_id AND ps.purpose = 'encryption' WHERE c.user_id = ?",
           args: [userId],
-        })
+        }),
       );
       return rows.map((r) => ({ ...r, public_key: toUint8Array(r.public_key) }));
     },
 
     async findCredentialById(id) {
-      const row = firstRow<Omit<Credential, 'public_key'> & { public_key: unknown }>(
+      const row = firstRow<Omit<Credential, "public_key"> & { public_key: unknown }>(
         await client.execute({
-          sql: 'SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE id = ?',
+          sql: "SELECT id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable, created_at FROM credentials WHERE id = ?",
           args: [id],
-        })
+        }),
       );
       if (!row) return null;
       return { ...row, public_key: toUint8Array(row.public_key) };
@@ -94,7 +103,7 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
 
     async createCredential(data: CreateCredentialData) {
       await client.execute({
-        sql: 'INSERT INTO credentials (id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        sql: "INSERT INTO credentials (id, user_id, public_key, counter, transports, device_type, backed_up, prf_capable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         args: [
           data.id,
           data.userId,
@@ -110,7 +119,7 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
 
     async updateCredentialCounter(id, counter) {
       await client.execute({
-        sql: 'UPDATE credentials SET counter = ? WHERE id = ?',
+        sql: "UPDATE credentials SET counter = ? WHERE id = ?",
         args: [counter, id],
       });
     },
@@ -134,7 +143,7 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
         await client.execute({
           sql: `SELECT challenge FROM challenges WHERE user_id = ? AND type = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1`,
           args: [userId, type],
-        })
+        }),
       );
     },
 
@@ -166,41 +175,41 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
     async findTodosByUserId(userId) {
       return toRows<Todo>(
         await client.execute({
-          sql: 'SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY order_index ASC, created_at ASC',
+          sql: "SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE user_id = ? ORDER BY order_index ASC, created_at ASC",
           args: [userId],
-        })
+        }),
       );
     },
 
     async findTodoById(id, userId) {
       return firstRow<Todo>(
         await client.execute({
-          sql: 'SELECT id FROM todos WHERE id = ? AND user_id = ?',
+          sql: "SELECT id FROM todos WHERE id = ? AND user_id = ?",
           args: [id, userId],
-        })
+        }),
       );
     },
 
     async getMaxOrderIndex(userId) {
       const row = firstRow<{ max_order: number | null }>(
         await client.execute({
-          sql: 'SELECT MAX(order_index) as max_order FROM todos WHERE user_id = ?',
+          sql: "SELECT MAX(order_index) as max_order FROM todos WHERE user_id = ?",
           args: [userId],
-        })
+        }),
       );
       return (row?.max_order ?? -1) + 1;
     },
 
     async createTodo(id, userId, encryptedData, iv, orderIndex) {
       await client.execute({
-        sql: 'INSERT INTO todos (id, user_id, encrypted_data, iv, order_index) VALUES (?, ?, ?, ?, ?)',
+        sql: "INSERT INTO todos (id, user_id, encrypted_data, iv, order_index) VALUES (?, ?, ?, ?, ?)",
         args: [id, userId, encryptedData, iv, orderIndex],
       });
       return firstRow<Todo>(
         await client.execute({
-          sql: 'SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE id = ?',
+          sql: "SELECT id, encrypted_data, iv, order_index, created_at, updated_at FROM todos WHERE id = ?",
           args: [id],
-        })
+        }),
       );
     },
 
@@ -213,7 +222,7 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
 
     async deleteTodo(id, userId) {
       const result = await client.execute({
-        sql: 'DELETE FROM todos WHERE id = ? AND user_id = ?',
+        sql: "DELETE FROM todos WHERE id = ? AND user_id = ?",
         args: [id, userId],
       });
       return result.rowsAffected;
@@ -222,10 +231,10 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
     async reorderTodos(ids, userId) {
       await client.batch(
         ids.map((id, index) => ({
-          sql: 'UPDATE todos SET order_index = ? WHERE id = ? AND user_id = ?',
+          sql: "UPDATE todos SET order_index = ? WHERE id = ? AND user_id = ?",
           args: [index, id, userId],
         })),
-        'write'
+        "write",
       );
     },
 
@@ -235,7 +244,7 @@ export function createTursoAdapter(url: string, authToken: string): DbAdapter {
           sql: "UPDATE todos SET encrypted_data = ?, iv = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
           args: [todo.encrypted_data, todo.iv, todo.id, userId],
         })),
-        'write'
+        "write",
       );
     },
   };

@@ -10,18 +10,22 @@ model: inherit
 ## プロジェクトのセキュリティアーキテクチャ
 
 ### 認証フロー
+
 - ライブラリ: `@simplewebauthn/server` v13+ (サーバー) / `@simplewebauthn/browser` v13+ (クライアント)
 - セッション: JWT (HMAC-SHA256、Web Crypto API のみ使用) → HttpOnly Cookie
 - 実装: `src/routes/auth.ts`、`src/middleware/auth.ts`
 
 ### 暗号化フロー（ゼロナレッジ）
+
 1. 認証時に PRF 拡張で `prfOutput`（32byte）を取得（サーバーには送らない）
 2. `HKDF(SHA-256, salt=空, info="webauthn-todo-encryption-v1")` で AES-GCM-256 鍵を導出
 3. TODO を `AES-GCM` で暗号化（ランダム 12byte IV）してサーバーに送信
 4. サーバーは暗号文のみ保持・復号不可
+
 - 実装: `frontend/main.ts` の `deriveEncryptionKey` / `encryptTodo` / `decryptTodo`
 
 ### PRF ソルト管理
+
 - サーバーがクレデンシャルごとにランダムな 32byte ソルトを生成・保存（`prf_salts` テーブル）
 - 認証オプション生成時にソルトをクライアントへ返却
 - クライアントが `evalByCredential` に含めて PRF を呼び出す
