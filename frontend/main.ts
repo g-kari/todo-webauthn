@@ -515,7 +515,12 @@ async function loadTodos(): Promise<void> {
   closeAllEditors();
 
   const listEl = document.getElementById("todo-list")!;
-  listEl.innerHTML = '<div class="loading"><span class="spinner"></span>読み込み中...</div>';
+  const loadingEl = document.createElement("div");
+  loadingEl.className = "loading";
+  const spinnerEl = document.createElement("span");
+  spinnerEl.className = "spinner";
+  loadingEl.append(spinnerEl, "読み込み中...");
+  listEl.replaceChildren(loadingEl);
 
   try {
     const res = await fetch("/api/todos");

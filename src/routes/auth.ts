@@ -1,19 +1,16 @@
-import { Hono } from 'hono';
-import { setCookie, deleteCookie } from 'hono/cookie';
+import { Hono } from "hono";
+import { setCookie, deleteCookie } from "hono/cookie";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
-} from '@simplewebauthn/server';
-import type {
-  AuthenticatorTransportFuture,
-  Base64URLString,
-} from '@simplewebauthn/server';
-import type { Bindings } from '../index';
-import { createJwt, requireAuth } from '../middleware/auth';
-import { createDb } from '../db/index';
-import { generateId, generateBase64URLId } from '../utils';
+} from "@simplewebauthn/server";
+import type { AuthenticatorTransportFuture, Base64URLString } from "@simplewebauthn/server";
+import type { Bindings } from "../index";
+import { createJwt, requireAuth } from "../middleware/auth";
+import { createDb } from "../db/index";
+import { generateId, generateBase64URLId } from "../utils";
 
 type Variables = {
   userId: string;
@@ -29,17 +26,18 @@ const USERNAME_MAX_LEN = 64;
 const USERNAME_PATTERN = /^[\w\-.@]+$/u;
 
 function validateUsername(raw: string): { value: string } | { error: string } {
-  const value = raw?.trim() ?? '';
-  if (!value) return { error: 'ユーザー名は必須ですわ' };
-  if (value.length > USERNAME_MAX_LEN) return { error: `ユーザー名は${USERNAME_MAX_LEN}文字以内にしてくださいませ` };
-  if (!USERNAME_PATTERN.test(value)) return { error: 'ユーザー名に使えない文字が含まれていますわ' };
+  const value = raw?.trim() ?? "";
+  if (!value) return { error: "ユーザー名は必須ですわ" };
+  if (value.length > USERNAME_MAX_LEN)
+    return { error: `ユーザー名は${USERNAME_MAX_LEN}文字以内にしてくださいませ` };
+  if (!USERNAME_PATTERN.test(value)) return { error: "ユーザー名に使えない文字が含まれていますわ" };
   return { value };
 }
 
-auth.post('/register/options', async (c) => {
+auth.post("/register/options", async (c) => {
   const { username: rawUsername } = await c.req.json<{ username: string }>();
   const validated = validateUsername(rawUsername);
-  if ('error' in validated) return c.json({ error: validated.error }, 400);
+  if ("error" in validated) return c.json({ error: validated.error }, 400);
   const username = validated.value;
 
   const db = createDb(c.env);
@@ -62,16 +60,21 @@ auth.post('/register/options', async (c) => {
     rpID: c.env.RP_ID,
     userName: username,
     userID: new TextEncoder().encode(userId) as Uint8Array<ArrayBuffer>,
-    attestationType: 'none',
+    attestationType: "none",
     excludeCredentials,
-    authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+    authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
     extensions: {
       // @ts-expect-error PRF型定義の回避
       prf: {},
     },
   });
 
-  await db.createChallenge({ id: generateId(), challenge: options.challenge, userId, type: 'registration' });
+  await db.createChallenge({
+    id: generateId(),
+    challenge: options.challenge,
+    userId,
+    type: "registration",
+  });
 
   const prfSalt = generateBase64URLId();
   return c.json({ options, userId, prfSalt });
@@ -80,7 +83,7 @@ auth.post('/register/options', async (c) => {
 // ========================
 // 登録: 検証・保存
 // ========================
-auth.post('/register/verify', async (c) => {
+auth.post("/register/verify", async (c) => {
   const body = await c.req.json<{
     username: string;
     userId: string;
@@ -97,33 +100,39 @@ auth.post('/register/verify', async (c) => {
   const existingUserByName = await db.findUserByUsername(username);
   const authorizedUserId = existingUserByName?.id ?? userId;
 
-  const challengeRow = await db.findLatestChallenge(authorizedUserId, 'registration');
-  if (!challengeRow) return c.json({ error: 'チャレンジが見つからないか期限切れですわ' }, 400);
+  const challengeRow = await db.findLatestChallenge(authorizedUserId, "registration");
+  if (!challengeRow) return c.json({ error: "チャレンジが見つからないか期限切れですわ" }, 400);
 
   let verification;
   try {
     verification = await verifyRegistrationResponse({
-      response: credential as unknown as Parameters<typeof verifyRegistrationResponse>[0]['response'],
+      response: credential as unknown as Parameters<
+        typeof verifyRegistrationResponse
+      >[0]["response"],
       expectedChallenge: challengeRow.challenge,
       expectedOrigin: c.env.RP_ORIGIN,
       expectedRPID: c.env.RP_ID,
       requireUserVerification: true,
     });
   } catch {
-    return c.json({ error: '登録検証に失敗しましたわ' }, 400);
+    return c.json({ error: "登録検証に失敗しましたわ" }, 400);
   }
 
   if (!verification.verified || !verification.registrationInfo) {
-    return c.json({ error: '登録が検証できませんでしたわ' }, 400);
+    return c.json({ error: "登録が検証できませんでしたわ" }, 400);
   }
 
-  const { credential: cred, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+  const {
+    credential: cred,
+    credentialDeviceType,
+    credentialBackedUp,
+  } = verification.registrationInfo;
 
   // authorizedUserId を使う（新規ユーザーでもクライアント送信 userId を信用しない）
   await db.createUserIfNotExists(authorizedUserId, username);
 
   const user = await db.findUserByUsername(username);
-  if (!user) return c.json({ error: 'ユーザーの作成に失敗しましたわ' }, 500);
+  if (!user) return c.json({ error: "ユーザーの作成に失敗しましたわ" }, 500);
 
   await db.createCredential({
     id: cred.id,
@@ -140,11 +149,11 @@ auth.post('/register/verify', async (c) => {
   await db.deleteRegistrationChallenges(authorizedUserId);
 
   const token = await createJwt({ userId: user.id, credentialId: cred.id }, c.env.JWT_SECRET);
-  setCookie(c, 'session', token, {
+  setCookie(c, "session", token, {
     httpOnly: true,
-    secure: c.env.RP_ORIGIN.startsWith('https'),
-    sameSite: 'Strict',
-    path: '/',
+    secure: c.env.RP_ORIGIN.startsWith("https"),
+    sameSite: "Strict",
+    path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
 
@@ -154,7 +163,7 @@ auth.post('/register/verify', async (c) => {
 // ========================
 // 認証: オプション生成
 // ========================
-auth.post('/login/options', async (c) => {
+auth.post("/login/options", async (c) => {
   const { username } = await c.req.json<{ username?: string }>();
 
   const db = createDb(c.env);
@@ -166,9 +175,23 @@ auth.post('/login/options', async (c) => {
 
   if (username) {
     const validated = validateUsername(username);
-    if ('error' in validated) return c.json({ error: validated.error }, 400);
+    if ("error" in validated) return c.json({ error: validated.error }, 400);
     const user = await db.findUserByUsername(validated.value);
-    if (!user) return c.json({ error: 'ユーザーが見つかりませんわ' }, 404);
+    // 存在しないユーザーも 200 を返しユーザー名列挙を防ぐ
+    if (!user) {
+      const dummyOptions = await generateAuthenticationOptions({
+        rpID: c.env.RP_ID,
+        allowCredentials: [],
+        userVerification: "required",
+      });
+      await db.createChallenge({
+        id: generateId(),
+        challenge: dummyOptions.challenge,
+        userId: null,
+        type: "authentication",
+      });
+      return c.json({ options: dummyOptions, prfSalts: {} });
+    }
 
     userId = user.id;
     const creds = await db.findCredentialsWithSaltByUserId(userId);
@@ -187,10 +210,15 @@ auth.post('/login/options', async (c) => {
   const options = await generateAuthenticationOptions({
     rpID: c.env.RP_ID,
     allowCredentials,
-    userVerification: 'required',
+    userVerification: "required",
   });
 
-  await db.createChallenge({ id: generateId(), challenge: options.challenge, userId, type: 'authentication' });
+  await db.createChallenge({
+    id: generateId(),
+    challenge: options.challenge,
+    userId,
+    type: "authentication",
+  });
 
   return c.json({ options, prfSalts });
 });
@@ -198,23 +226,25 @@ auth.post('/login/options', async (c) => {
 // ========================
 // 認証: 検証・セッション発行
 // ========================
-auth.post('/login/verify', async (c) => {
+auth.post("/login/verify", async (c) => {
   const credential = await c.req.json<Record<string, unknown>>();
   const credentialId = credential.id as string;
 
   const db = createDb(c.env);
 
   const storedCred = await db.findCredentialById(credentialId);
-  if (!storedCred) return c.json({ error: 'クレデンシャルが見つかりませんわ' }, 404);
+  if (!storedCred) return c.json({ error: "クレデンシャルが見つかりませんわ" }, 404);
 
   // クレデンシャルのユーザーに紐付いたチャレンジのみを取得（並行ログイン時の混線を防ぐ）
-  const challengeRow = await db.findLatestChallenge(storedCred.user_id, 'authentication');
-  if (!challengeRow) return c.json({ error: 'チャレンジが見つからないか期限切れですわ' }, 400);
+  const challengeRow = await db.findLatestChallenge(storedCred.user_id, "authentication");
+  if (!challengeRow) return c.json({ error: "チャレンジが見つからないか期限切れですわ" }, 400);
 
   let verification;
   try {
     verification = await verifyAuthenticationResponse({
-      response: credential as unknown as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
+      response: credential as unknown as Parameters<
+        typeof verifyAuthenticationResponse
+      >[0]["response"],
       expectedChallenge: challengeRow.challenge,
       expectedOrigin: c.env.RP_ORIGIN,
       expectedRPID: c.env.RP_ID,
@@ -229,21 +259,21 @@ auth.post('/login/verify', async (c) => {
       requireUserVerification: true,
     });
   } catch {
-    return c.json({ error: '認証検証に失敗しましたわ' }, 400);
+    return c.json({ error: "認証検証に失敗しましたわ" }, 400);
   }
 
-  if (!verification.verified) return c.json({ error: '認証が検証できませんでしたわ' }, 400);
+  if (!verification.verified) return c.json({ error: "認証が検証できませんでしたわ" }, 400);
 
   await db.updateCredentialCounter(credentialId, verification.authenticationInfo.newCounter);
   // 特定のチャレンジ値で削除（他ユーザーのチャレンジを巻き込まない）
   await db.deleteAuthChallengeByValue(challengeRow.challenge);
 
   const token = await createJwt({ userId: storedCred.user_id, credentialId }, c.env.JWT_SECRET);
-  setCookie(c, 'session', token, {
+  setCookie(c, "session", token, {
     httpOnly: true,
-    secure: c.env.RP_ORIGIN.startsWith('https'),
-    sameSite: 'Strict',
-    path: '/',
+    secure: c.env.RP_ORIGIN.startsWith("https"),
+    sameSite: "Strict",
+    path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
 
@@ -253,12 +283,12 @@ auth.post('/login/verify', async (c) => {
 // ========================
 // セッション確認
 // ========================
-auth.get('/me', requireAuth(), async (c) => {
-  const userId = c.get('userId');
+auth.get("/me", requireAuth(), async (c) => {
+  const userId = c.get("userId");
   const db = createDb(c.env);
 
   const user = await db.findUserById(userId);
-  if (!user) return c.json({ error: 'ユーザーが見つかりませんわ' }, 404);
+  if (!user) return c.json({ error: "ユーザーが見つかりませんわ" }, 404);
 
   return c.json({
     id: user.id,
@@ -271,8 +301,8 @@ auth.get('/me', requireAuth(), async (c) => {
 // ========================
 // ログアウト
 // ========================
-auth.post('/logout', (c) => {
-  deleteCookie(c, 'session', { path: '/' });
+auth.post("/logout", (c) => {
+  deleteCookie(c, "session", { path: "/" });
   return c.json({ success: true });
 });
 
