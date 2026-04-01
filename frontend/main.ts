@@ -1622,12 +1622,7 @@ async function handleDrop(): Promise<void> {
 // TODO描画
 // ========================
 
-function renderTodoItem(todo: DecryptedTodo): HTMLElement {
-  const wrapper = document.createElement("div");
-  wrapper.className = "todo-wrapper";
-  wrapper.dataset.id = todo.id;
-  wrapper.draggable = true;
-
+function createTodoItemEl(todo: DecryptedTodo, wrapper: HTMLElement): HTMLElement {
   const item = document.createElement("div");
   item.className = `todo-item${todo.completed ? " completed" : ""}`;
   item.dataset.id = todo.id;
@@ -1672,7 +1667,16 @@ function renderTodoItem(todo: DecryptedTodo): HTMLElement {
     mkNotesBtn(todo, wrapper),
     mkDeleteBtn(todo),
   );
-  wrapper.append(item);
+  return item;
+}
+
+function renderTodoItem(todo: DecryptedTodo): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "todo-wrapper";
+  wrapper.dataset.id = todo.id;
+  wrapper.draggable = true;
+
+  wrapper.append(createTodoItemEl(todo, wrapper));
   return wrapper;
 }
 
@@ -1714,7 +1718,43 @@ function renderTodos(todos: DecryptedTodo[]): void {
     return;
   }
 
-  listEl.replaceChildren(...filtered.map(renderTodoItem));
+  // 差分更新: 既存の .todo-wrapper を再利用してノートパネルを保持する
+  const existingWrappers = new Map<string, HTMLElement>();
+  for (const child of Array.from(listEl.children)) {
+    const el = child as HTMLElement;
+    if (el.dataset.id) existingWrappers.set(el.dataset.id, el);
+  }
+
+  // filtered 順に wrapper を並べる
+  for (let i = 0; i < filtered.length; i++) {
+    const todo = filtered[i];
+    let wrapper = existingWrappers.get(todo.id);
+
+    if (wrapper) {
+      // 既存 wrapper を再利用: .todo-item のみ差し替え（ノートパネルは保持）
+      const oldItem = wrapper.querySelector(".todo-item");
+      const newItem = createTodoItemEl(todo, wrapper);
+      if (oldItem) {
+        wrapper.replaceChild(newItem, oldItem);
+      } else {
+        wrapper.prepend(newItem);
+      }
+    } else {
+      // 新規作成
+      wrapper = renderTodoItem(todo);
+    }
+
+    // DOM 上の位置を正しい順序に調整
+    const currentAtIndex = listEl.children[i] as HTMLElement | undefined;
+    if (currentAtIndex !== wrapper) {
+      listEl.insertBefore(wrapper, currentAtIndex ?? null);
+    }
+  }
+
+  // filtered に含まれない余分な wrapper を削除
+  while (listEl.children.length > filtered.length) {
+    listEl.lastElementChild?.remove();
+  }
 }
 
 async function addTodo(): Promise<void> {
