@@ -22,7 +22,7 @@
   "dependencies": {
     "@lexical/history": "^0.42.0",
     "@lexical/list": "^0.42.0",
-    "@lexical/rich-text": "^0.42.0",
+    "@lexical/rich-text": "^0.43.0",
     "@libsql/client": "^0.17.2",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.1.1",
