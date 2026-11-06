@@ -25,17 +25,17 @@
     "@lexical/rich-text": "^0.42.0",
     "@libsql/client": "^0.17.2",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.1.1",
-    "hono": "^4.12.14",
+    "@simplewebauthn/server": "^13.3.2",
+    "hono": "^4.13.11",
     "lexical": "^0.42.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250401.0",
     "@playwright/test": "^1.59.0",
     "typescript": "^5.8.3",
-    "vite": "^8.0.5",
-    "vite-plus": "^0.1.17",
-    "vitest": "^4.1.2",
-    "wrangler": "^4.12.0"
+    "vite": "^8.3.5",
+    "vite-plus": "^0.1.24",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0"
   }
 }
