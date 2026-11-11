@@ -23,7 +23,7 @@
     "@lexical/history": "^0.42.0",
     "@lexical/list": "^0.53.0",
     "@lexical/rich-text": "^0.43.0",
-    "@libsql/client": "^0.17.2",
+    "@libsql/client": "^0.18.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",
     "hono": "^4.13.11",
